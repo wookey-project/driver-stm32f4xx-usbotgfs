@@ -109,13 +109,15 @@ mbed_error_t usbotgfs_initialize_core(usbotgfs_dev_mode_t mode)
     log_printf("[USB FS] initializing the core\n");
     mbed_error_t errcode = MBED_ERROR_NONE;
     int count = 0;
-    uint32_t reg_value;
 
+	set_reg(r_CORTEX_M_USBOTG_FS_GCCFG, 1, USBOTG_FS_GCCFG_PWRDWN);
+    set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 1, USBOTG_FS_GUSBCFG_PHYSEL); /* Full Speed serial transceiver select */
     /* 1. Read the User Hardware Configuration registers
      *
      * INFO: this not needed in the STM32F4 IP instanciation, as GHWCFG registers
      * are not mapped
      */
+    clear_reg_bits(r_CORTEX_M_USBOTG_FS_GINTSTS, USBOTG_FS_GINTSTS_SOF_Msk);
 
 
     /* 2. Program the following fields in the Global AHB Configuration (GAHBCFG)
@@ -151,26 +153,13 @@ mbed_error_t usbotgfs_initialize_core(usbotgfs_dev_mode_t mode)
 
 	set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 0, USBOTG_FS_GUSBCFG_TOCAL); /* FS timeout calibration */
 
-	set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 0, USBOTG_FS_GUSBCFG_TOCAL); /* FS timeout calibration */
+	set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 6, USBOTG_FS_GUSBCFG_TRDT); /* USB turnaround time see TRDT values (DocID018909 Rev 15) */
 
-
-    /* clear the USB transiver powerdwn msk */
-	clear_reg_bits(r_CORTEX_M_USBOTG_FS_GCCFG, USBOTG_FS_GCCFG_PWRDWN_Msk);
+	set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_MMISM); /* Unmask  Mode mismatch interrupt */
 
     /* SRP and HNP capable bits are not described in the USB OTG HS
      * TODO: STM32F4 datasheet. It would be intereseting to check if they can
      * be used in device and host mode in HS case too */
-    log_printf("[USB FS] core init: configure ULPI interractions\n");
-	reg_value = read_reg_value(r_CORTEX_M_USBOTG_FS_GUSBCFG);
-    log_printf("[USB FS] initial GUSBCFG is %x %x %x %x\n", reg_value >> 24, (reg_value >> 16) & 0xff, (reg_value >> 8) & 0xff, reg_value & 0xff);
-    set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 1, USBOTG_FS_GUSBCFG_PHYSEL); /* Full Speed serial transceiver select */
-
-
-    /* writing back the global configuration register */
-	write_reg_value(r_CORTEX_M_USBOTG_FS_GUSBCFG, reg_value);
-    log_printf("[USB FS] core init: GUSBCFG is %x %x %x %x\n", reg_value >> 24, (reg_value >> 16) & 0xff, (reg_value >> 8) & 0xff, reg_value & 0xff);
-	reg_value = read_reg_value(r_CORTEX_M_USBOTG_FS_GUSBCFG);
-    log_printf("[USB FS] core init: GUSBCFG reg after conf is %x %x %x %x\n", reg_value >> 24, (reg_value >> 16) & 0xff, (reg_value >> 8) & 0xff, reg_value & 0xff);
 
 	/* Core soft reset must be issued after PHY configuration */
 	/* Wait for AHB master idle */
@@ -185,15 +174,6 @@ mbed_error_t usbotgfs_initialize_core(usbotgfs_dev_mode_t mode)
     log_printf("[USB FS] AHB idle after %d loops\n", count);
 
 
-    count = 0;
-    set_reg(r_CORTEX_M_USBOTG_FS_GRSTCTL, 1, USBOTG_FS_GRSTCTL_CSRST);
-    while (get_reg(r_CORTEX_M_USBOTG_FS_GRSTCTL, USBOTG_FS_GRSTCTL_CSRST)) {
-        if (++count > USBOTGFS_REG_CHECK_TIMEOUT) {
-            log_printf("HANG! Core Soft RESET\n");
-            errcode = MBED_ERROR_BUSY;
-            goto err;
-        }
-    }
     log_printf("[USB FS] Core acknowledged reset after %d loops\n", count);
     /* 3 PHY clocks wait, (active wait here, as sys_sleep() is too slow */
 	for (uint32_t i = 0; i < 0xff; i++) {
@@ -225,8 +205,9 @@ mbed_error_t usbotgfs_initialize_device(void)
     mbed_error_t errcode = MBED_ERROR_NONE;
 
     log_printf("[USB FS] dev init: Device mode initialization...\n");
-    set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_RXFLVLM);
+//    set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_RXFLVLM);
 //XXX:    set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_NPTXFEM);
+	set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 1, USBOTG_FS_GUSBCFG_FDMOD); /* FIXME Force device mode */
 
 
     log_printf("[USB FS] dev init: set speed to HS\n");

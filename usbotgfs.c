@@ -79,7 +79,7 @@ static void usbotgfs_wait_for_xmit_complete(usbotgfs_ep_t *ep)
  * Defining functional API
  */
 
-static const char *devname = "usb-otg-hs";
+static const char *devname = "usb-otg-fs";
 /* buffer for setup packets */
 // TODO to use static uint8_t 	setup_packet[8];
 
