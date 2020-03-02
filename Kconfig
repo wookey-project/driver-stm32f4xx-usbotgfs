@@ -1,0 +1,38 @@
+config USR_DRV_USBOTGFS
+  bool  "userspace USB OTG FS driver library"
+  default y
+  ---help---
+  Support for STM32 USB OTG FS.
+
+if USR_DRV_USBOTGFS
+
+menu "USB-FS related features"
+
+choice
+   prompt "USBOTG FS driver mode"
+   default USR_DRV_USBOTGFS_MODE_DEVICE
+   config USR_DRV_USBOTGFS_MODE_DEVICE
+      bool "USB OTG FS driver in device mode"
+      ---help---
+      the driver is configured to work in device mode. EPs directions are
+      inverted in comparison with the host (and USB standard) mode, i.e.
+      IN EP send data, OUT EP receive data.
+   config USR_DRV_USBOTGFS_MODE_HOST
+      bool "USB OTG FS driver in host mode (WiP)"
+      ---help---
+      the driver is configured to work in host mode. EPs directions are
+      configured in USB standard mode, i.e. IN EP receive data, OUT EP send data.
+endchoice
+
+
+config USR_DRV_USBOTGFS_DEBUG
+  bool "Activate debuggging for USB OTG FS driver"
+  default n
+  ---help---
+  Activate various debugging for usb OTG Full speed.
+  This option is efficient only if KERNEL_SERIAL is activated.
+
+
+endmenu
+
+endif
