@@ -96,7 +96,6 @@ typedef enum {
 } usbotgfs_int_id_t;
 
 
-static volatile uint32_t    usbotgfs_int_cnt[32] = { 0 };
 #if CONFIG_USR_DRV_USBOTGFS_DEBUG
 
 static volatile uint32_t    usbotgfs_int_cnt[32] = { 0 };
@@ -105,43 +104,6 @@ static volatile uint32_t    usbotgfs_int_cnt[32] = { 0 };
  * This consume space in the device flash memory and should be used only
  * for debug purpose.
  */
-static const char *usbotgfs_int_name[] = {
-    "CMOD",
-    "MMIS",
-    "OTGINT",
-    "SOF",
-    "RXFLVL",
-    "NPTXE",
-    "GINAKEFF",
-    "GONAKEFF",
-    "RESERVED8",
-    "RESERVED9",
-    "ESUSP",
-    "USBSUSP",
-    "USBRST",
-    "ENUMDNE",
-    "ISOODRP",
-    "EOPF",
-    "RESERVED16",
-    "EPMISM",
-    "IEPINT",
-    "OEPINT",
-    "IISOIXFR",
-    "IPXFR",
-    "RESERVED22",
-    "RESERVED23",
-    "HPRTINT",
-    "HCINTT",
-    "PTXFE",
-    "RESERVED27",
-    "CIDSCHG",
-    "DISCINT",
-    "SRQINT",
-    "WKUPINT",
-};
-
-
-
 #endif
 /*
  * Generic handler, used by default.
@@ -200,13 +162,13 @@ static mbed_error_t reserved_handler(void)
  */
 static mbed_error_t reset_handler(void)
 {
-    log_printf("[USB HS][RESET] received USB Reset\n");
+    log_printf("[USB FS][RESET] received USB Reset\n");
     mbed_error_t errcode = MBED_ERROR_NONE;
     usbotgfs_context_t *ctx = usbotgfs_get_context();
     for (uint8_t i = 0; i < USBOTGFS_MAX_OUT_EP; ++i) {
         /* if Out EPi is configured, set DOEPCTLi.SNAK to 1 */
         if (ctx->out_eps[i].configured) {
-            log_printf("[USB HS][RESET] activate SNAK for out_ep %d\n", i);
+            log_printf("[USB FS][RESET] activate SNAK for out_ep %d\n", i);
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(i),
                          USBOTG_FS_DOEPCTL_CNAK_Msk);
         }
@@ -231,24 +193,24 @@ static mbed_error_t reset_handler(void)
                  USBOTG_FS_DIEPMSK_XFRCM_Msk |
                  USBOTG_FS_DIEPMSK_TOM_Msk);
 
-    log_printf("[USB HS][RESET] initialize global fifo\n");
+    log_printf("[USB FS][RESET] initialize global fifo\n");
     if ((errcode = usbotgfs_init_global_fifo()) != MBED_ERROR_NONE) {
         goto err;
     }
 
-    log_printf("[USB HS][RESET] initialize EP0 fifo\n");
+    log_printf("[USB FS][RESET] initialize EP0 fifo\n");
     /* fifo is RESET, in both Core registers and EP context. The FIFO will need
      * to be reconfigured later by the driver API (typically through upper
      * reset handler */
 # if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
         /* set TxFIFO for EP0 (in_eps[0]) */
-        log_printf("[USB HS][RESET] initialize EP0 TxFIFO in device mode\n");
+        log_printf("[USB FS][RESET] initialize EP0 TxFIFO in device mode\n");
         if ((errcode = usbotgfs_reset_epx_fifo(&(ctx->in_eps[0]))) != MBED_ERROR_NONE) {
             goto err;
         }
 #else
         /* set TxFIFO for EP0 (out_eps[0]) */
-        log_printf("[USB HS][RESET] initialize EP0 TxFIFO in host mode\n");
+        log_printf("[USB FS][RESET] initialize EP0 TxFIFO in host mode\n");
         if ((errcode = usbotgfs_reset_epx_fifo(&(ctx->out_eps[0]))) != MBED_ERROR_NONE) {
             goto err;
         }
@@ -257,24 +219,24 @@ static mbed_error_t reset_handler(void)
     usbotgfs_txfifo_flush(0);
     usbotgfs_rxfifo_flush(0);
 
-    log_printf("[USB HS][RESET] set EP0 as configured\n");
+    log_printf("[USB FS][RESET] set EP0 as configured\n");
     /* Now EP0 is configued. Set this information in the driver context */
     ctx->in_eps[0].configured = true;
     ctx->out_eps[0].configured = true;
 
     /* execute upper layer (USB Control plane) reset handler. This
      * function should always reconfigure the FIFO structure */
-    log_printf("[USB HS][RESET] call usb ctrl plane reset\n");
+    log_printf("[USB FS][RESET] call usb ctrl plane reset\n");
     usbctrl_handle_reset(usb_otg_hs_dev_infos.id);
 
     /* now that USB full stack execution is done, Enable Endpoint.
      * From now on, data can be received or sent on Endpoint 0 */
 # if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
-        log_printf("[USB HS][RESET] enable EP0 out (reception)\n");
+        log_printf("[USB FS][RESET] enable EP0 out (reception)\n");
         set_reg(r_CORTEX_M_USBOTG_FS_DOEPCTL(0),
                 1, USBOTG_FS_DOEPCTL_EPENA);
 #else
-        log_printf("[USB HS][RESET] host mode TODO\n");
+        log_printf("[USB FS][RESET] host mode TODO\n");
 #endif
 err:
     return errcode;
@@ -291,9 +253,9 @@ static mbed_error_t enumdone_handler(void)
 	uint8_t speed = get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_ENUMSPD);
 
 	if (speed == USBOTG_FS_DSTS_ENUMSPD_FS) {
-		log_printf("[USB HS][ENUMDONE] Full speed enumerated !\n");
+		log_printf("[USB FS][ENUMDONE] Full speed enumerated !\n");
 	} else {
-		log_printf("[USB HS][ENUMDONE] invalid speed 0x%x !\n", speed);
+		log_printf("[USB FS][ENUMDONE] invalid speed 0x%x !\n", speed);
         errcode = MBED_ERROR_INITFAIL;
         goto err;
     }
@@ -635,17 +597,17 @@ static mbed_error_t rxflvl_handler(void)
                         errcode = MBED_ERROR_UNSUPORTED_CMD;
                         goto err;
                     }
-                    log_printf("[USB HS][RXFLVL] EP%d Global OUT NAK effective\n", epnum);
+                    log_printf("[USB FS][RXFLVL] EP%d Global OUT NAK effective\n", epnum);
                     ctx->gonak_active = true;
                     ctx->out_eps[epnum].state = USBOTG_FS_EP_STATE_IDLE;
                     break;
                 }
             case PKT_STATUS_OUT_DATA_PKT_RECV:
                 {
-                    log_printf("[USB HS][RXFLVL] EP%d OUT Data PKT (size %d) Recv\n", epnum, bcnt);
+                    log_printf("[USB FS][RXFLVL] EP%d OUT Data PKT (size %d) Recv\n", epnum, bcnt);
                     if (ctx->out_eps[epnum].configured != true)
                     {
-                        log_printf("[USB HS][RXFLVL] EP%d OUT Data PKT on invalid EP!\n", epnum);
+                        log_printf("[USB FS][RXFLVL] EP%d OUT Data PKT on invalid EP!\n", epnum);
                         /* to clear RXFLVL IT, we must read from FIFO. read to garbage here */
                         if (bcnt > 0) {
                             usbotgfs_rxfifo_flush(epnum);
@@ -666,7 +628,7 @@ static mbed_error_t rxflvl_handler(void)
                     if (bcnt == 0) {
                         goto err;
                     }
-                    log_printf("[USB HS][RXFLVL] EP%d OUT Data PKT (size %d) Read EPx FIFO\n", epnum, bcnt);
+                    log_printf("[USB FS][RXFLVL] EP%d OUT Data PKT (size %d) Read EPx FIFO\n", epnum, bcnt);
                     if (usbotgfs_read_epx_fifo(bcnt, &(ctx->out_eps[epnum])) != MBED_ERROR_NONE) {
                         /* empty fifo on error */
                         usbotgfs_rxfifo_flush(epnum);
@@ -684,10 +646,10 @@ static mbed_error_t rxflvl_handler(void)
                 }
             case PKT_STATUS_OUT_TRANSFER_COMPLETE:
                 {
-                    log_printf("[USB HS][RXFLVL] OUT Transfer complete on EP %d\n", epnum);
+                    log_printf("[USB FS][RXFLVL] OUT Transfer complete on EP %d\n", epnum);
                     if (ctx->out_eps[epnum].configured != true) /* which state on OUT TRSFER Complete ? */
                     {
-                        log_printf("[USB HS][RXFLVL] OUT Data PKT on invalid EP!\n");
+                        log_printf("[USB FS][RXFLVL] OUT Data PKT on invalid EP!\n");
                         errcode = MBED_ERROR_INVSTATE;
                         goto err;
                     }
@@ -696,7 +658,7 @@ static mbed_error_t rxflvl_handler(void)
                 }
             case PKT_STATUS_SETUP_TRANS_COMPLETE:
                 {
-                    log_printf("[USB HS][RXFLVL] Setup Transfer complete on ep %d (bcnt %d)\n", epnum, bcnt);
+                    log_printf("[USB FS][RXFLVL] Setup Transfer complete on ep %d (bcnt %d)\n", epnum, bcnt);
                     if (epnum != 0 || bcnt != 0) {
                         errcode = MBED_ERROR_UNSUPORTED_CMD;
                         goto err;
@@ -707,7 +669,7 @@ static mbed_error_t rxflvl_handler(void)
                 }
             case PKT_STATUS_SETUP_PKT_RECEIVED:
                 {
-                    log_printf("[USB HS][RXFLVL] Setup pkt (%dB) received on ep %d\n", bcnt, epnum);
+                    log_printf("[USB FS][RXFLVL] Setup pkt (%dB) received on ep %d\n", bcnt, epnum);
                     if (epnum != 0) {
 
                         uint8_t buf[16];
@@ -746,7 +708,7 @@ static mbed_error_t rxflvl_handler(void)
                     break;
                 }
             default:
-                log_printf("[USB HS][RXFLVL] RXFLVL bad status %x!", pktsts.devsts);
+                log_printf("[USB FS][RXFLVL] RXFLVL bad status %x!", pktsts.devsts);
                 break;
         }
 
@@ -864,7 +826,7 @@ void USBOTGFS_IRQHandler(uint8_t interrupt __attribute__((unused)),
 	uint32_t intmsk = dr;
 
 	if (intsts & USBOTG_FS_GINTSTS_CMOD_Msk){
-		log_printf("[USB HS] Int in Host mode !\n");
+		log_printf("[USB FS] Int in Host mode !\n");
 	}
     uint32_t val = intsts;
     val &= intmsk;
@@ -879,17 +841,12 @@ void USBOTGFS_IRQHandler(uint8_t interrupt __attribute__((unused)),
          */
         if (val & 1)
         {
-            usbotgfs_int_cnt[i]++;
 #if CONFIG_USR_DRV_USBOTGFS_DEBUG
             usbotgfs_int_cnt[i]++;
 #endif
             /* INFO: as log_printf is a *macro* only resolved by cpp in debug mode,
              * usbotgfs_int_name is accedded only in this mode. There is no
              * invalid memory access in the other case. */
-            if (i != 3) {
-                /* 3 is for SOF (Start Of Frame, and is too frequent, generating ISR exhausting */
-                log_printf("[USB HS] IRQ Handler for event %d (%s)\n", i, usbotgfs_int_name[i]);
-            }
             usb_otg_hs_isr_handlers[i]();
         }
     }

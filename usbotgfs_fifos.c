@@ -164,7 +164,7 @@ mbed_error_t usbotgfs_reset_epx_fifo(usbotgfs_ep_t *ep)
         /*
          */
         set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF0, USBOTG_FS_RX_CORE_FIFO_SZ, USBOTG_FS_DIEPTXF_INEPTXSA);
-        set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF0, USBOTG_FS_TX_CORE_FIFO_SZ, USBOTG_FS_DIEPTXF_INEPTXFD);
+        set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF0, USBOTG_FS_TX_CORE_FIFO_SZ / 4, USBOTG_FS_DIEPTXF_INEPTXFD);
         /*
          * 4. Program STUPCNT in the endpoint-specific registers for control OUT endpoint 0 to receive a SETUP packet
          *      – STUPCNT = 3 in OTG_HS_DOEPTSIZ0 (to receive up to 3 back-to-back SETUP packets)
@@ -180,11 +180,10 @@ mbed_error_t usbotgfs_reset_epx_fifo(usbotgfs_ep_t *ep)
         if (ep->dir == USBOTG_FS_EP_DIR_OUT) {
             /* using global RX fifo... GRXFIFOSZ set as global RX FIFO */
         } else {
-            set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), ep->mpsize, USBOTG_FS_DIEPTXF_INEPTXFD);
             set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), ctx->fifo_idx, USBOTG_FS_DIEPTXF_INEPTXSA);
+            /* field is in 32bits words multiple */
+            set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), ep->mpsize / 4, USBOTG_FS_DIEPTXF_INEPTXFD);
             ctx->fifo_idx += ep->mpsize;
-            //set_reg(r_CORTEX_M_USBOTG_FS_DOEPRXF(ep->id), (ep->mpsize / 4), USBOTG_FS_DIEPTXF_INEPTXFD);
-            //set_reg(r_CORTEX_M_USBOTG_FS_DOEPRXF(ep->id), ((ep->mpsize / 4) * 4) * ep + ((ep->mpsize / 4) * 4)*2, USBOTG_FS_DIEPTXF_INEPTXSA);
         }
     }
     ep->fifo_idx = 0;

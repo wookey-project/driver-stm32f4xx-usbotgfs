@@ -44,6 +44,8 @@
 #define SETUP_Done	0x04
 #define SETUP		0x06
 
+#define MAX_EPx_PKT_SIZE 64
+
 #define USB_REG_CHECK_TIMEOUT 50
 
 #define USBOTG_FS_RX_FIFO_SZ 	512
@@ -313,6 +315,15 @@ reset ? */
 
 err:
     return errcode;
+}
+
+/*
+ * Returns, for the current IP, the max data endpoint (not control) packet size
+ * supported
+ */
+uint32_t usbotgfs_get_ep_mpsize(void)
+{
+    return MAX_EPx_PKT_SIZE;
 }
 
 /*
@@ -805,15 +816,20 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
+    /* truncating to max 64 bytes whatever mpsize is */
+    uint32_t local_mpsize = 64;
+    if (mpsize < 64) {
+        local_mpsize = mpsize;
+    }
 
     switch (dir) {
         case USBOTG_FS_EP_DIR_IN:
-            log_printf("[USBOTGFS] enable EP %d: dir IN, mpsize %d, type %x\n", ep, mpsize, type);
+            log_printf("[USBOTGFS] enable EP %d: dir IN, mpsize %d, type %x\n", ep, local_mpsize, type);
 
             ctx->in_eps[ep].id = ep;
             ctx->in_eps[ep].dir = dir;
             ctx->in_eps[ep].configured = true;
-            ctx->in_eps[ep].mpsize = mpsize;
+            ctx->in_eps[ep].mpsize = local_mpsize;
             ctx->in_eps[ep].type = type;
             ctx->in_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
             ctx->in_eps[ep].handler = handler;
@@ -824,7 +840,7 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
                     USBOTG_FS_DIEPCTL_EPTYP_Msk,
                     USBOTG_FS_DIEPCTL_EPTYP_Pos);
 
-            set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), mpsize,
+            set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), local_mpsize,
                           USBOTG_FS_DIEPCTL_MPSIZ_Msk(ep),
                           USBOTG_FS_DIEPCTL_MPSIZ_Pos(ep));
 
@@ -841,11 +857,12 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_IEPM(ep));
             break;
         case USBOTG_FS_EP_DIR_OUT:
-            log_printf("[USBOTGFS] enable EP %d: dir OUT, mpsize %d, type %x\n", ep, mpsize, type);
+            log_printf("[USBOTGFS] enable EP %d: dir OUT, mpsize %d, type %x\n", ep, local_mpsize, type);
             ctx->out_eps[ep].id = ep;
             ctx->out_eps[ep].dir = dir;
             ctx->out_eps[ep].configured = true;
-            ctx->out_eps[ep].mpsize = mpsize;
+            /* FS mode: MPSize = 64 */
+            ctx->out_eps[ep].mpsize = local_mpsize;
             ctx->out_eps[ep].type = type;
             ctx->out_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
             ctx->out_eps[ep].handler = handler;
@@ -853,7 +870,7 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
 
             /* Maximum packet size */
             set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep),
-                    mpsize, USBOTG_FS_DOEPCTL_MPSIZ_Msk(ep),
+                    local_mpsize, USBOTG_FS_DOEPCTL_MPSIZ_Msk(ep),
                     USBOTG_FS_DOEPCTL_MPSIZ_Pos(ep));
 
             /*  USB active endpoint */

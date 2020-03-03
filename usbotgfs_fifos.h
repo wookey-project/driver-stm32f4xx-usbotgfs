@@ -33,8 +33,9 @@
 /*
  * Size of the USB OTG HS core internal FIFO (global config, not per EP)
  */
-#define USBOTG_FS_RX_CORE_FIFO_SZ 512 /* 128 bytes, unit is 32bits DWORD here */
-#define USBOTG_FS_TX_CORE_FIFO_SZ 512 /* 128 bytes, unit is 32bits DWORD here */
+
+#define USBOTG_FS_RX_CORE_FIFO_SZ       128
+#define USBOTG_FS_TX_CORE_FIFO_SZ       128
 
 
 
