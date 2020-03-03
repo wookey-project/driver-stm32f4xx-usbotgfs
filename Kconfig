@@ -1,5 +1,6 @@
 config USR_DRV_USBOTGFS
   bool  "userspace USB OTG FS driver library"
+  select USR_DRV_USB_FS
   default y
   ---help---
   Support for STM32 USB OTG FS.
@@ -7,6 +8,9 @@ config USR_DRV_USBOTGFS
 if USR_DRV_USBOTGFS
 
 menu "USB-FS related features"
+
+config USR_DRV_USB_FS
+      bool
 
 choice
    prompt "USBOTG FS driver mode"
