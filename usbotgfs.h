@@ -49,7 +49,7 @@
  * General tooling
  */
 
-#if CONFIG_USR_DRV_USBOTGHS_DEBUG
+#if CONFIG_USR_DRV_USBOTGFS_DEBUG
 # define log_printf(...) printf(__VA_ARGS__)
 #else
 # define log_printf(...)
