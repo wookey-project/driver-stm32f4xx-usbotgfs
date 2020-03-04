@@ -36,8 +36,8 @@ typedef mbed_error_t (*usbotgfs_ioep_handler_t)(uint32_t dev_id, uint32_t size, 
  * by software stack. This enumerate define which mode to use
  */
 typedef enum {
-    USBOTGFS_MODE_HOST,
-    USBOTGFS_MODE_DEVICE
+    USBOTGFS_MODE_HOST = 0,
+    USBOTGFS_MODE_DEVICE = 1
 } usbotgfs_dev_mode_t;
 
 /*
@@ -115,8 +115,8 @@ typedef enum {
 } usbotgfs_ep_state_t;
 
 typedef enum {
-    USBOTG_FS_EP_DIR_IN,
-    USBOTG_FS_EP_DIR_OUT,
+    USBOTG_FS_EP_DIR_IN = 0,
+    USBOTG_FS_EP_DIR_OUT = 1,
 } usbotgfs_ep_dir_t;
 
 

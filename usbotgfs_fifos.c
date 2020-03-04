@@ -25,6 +25,7 @@
 #include "libc/regutils.h"
 #include "libc/types.h"
 #include "libc/stdio.h"
+#include "libs/usbctrl/api/libusbctrl.h"
 
 #include "api/libusbotgfs.h"
 #include "usbotgfs_regs.h"
@@ -466,3 +467,14 @@ err:
     return errcode;
 }
 
+/*
+ * About generic part:
+ * This part translate libusbctrl forward-declaration symbols to local symbols.
+ * This permits to resolve all symbols of the libctrl abstraction layer into this
+ * very driver one.
+ * WARNING: this method has one single restriction: only one driver can be used
+ * at a time by a given ELF binary (i.e. an application), as symbols are resolved
+ * at link time.
+ */
+mbed_error_t usb_backend_drv_set_recv_fifo(uint8_t *dst, uint32_t size, uint8_t ep)
+    __attribute__ ((alias("usbotgfs_set_recv_fifo")));
