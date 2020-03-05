@@ -227,7 +227,7 @@ static mbed_error_t reset_handler(void)
     /* execute upper layer (USB Control plane) reset handler. This
      * function should always reconfigure the FIFO structure */
     log_printf("[USB FS][RESET] call usb ctrl plane reset\n");
-    usbctrl_handle_reset(usb_otg_hs_dev_infos.id);
+    usbctrl_handle_reset(usb_otg_fs_dev_infos.id);
 
     /* now that USB full stack execution is done, Enable Endpoint.
      * From now on, data can be received or sent on Endpoint 0 */
@@ -339,7 +339,7 @@ static mbed_error_t oepint_handler(void)
                 }
                 if (callback_to_call == true) {
                     log_printf("[USBOTG][HS] oepint: calling callback\n");
-                    errcode = ctx->out_eps[ep_id].handler(usb_otg_hs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
+                    errcode = ctx->out_eps[ep_id].handler(usb_otg_fs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
                     ctx->out_eps[ep_id].fifo_idx = 0;
                     if (end_of_transfer == true && ep_id == 0) {
                         /* We synchronously handle CNAK only for EP0 data. others EP are handled by dedicated upper layer
@@ -367,7 +367,7 @@ static mbed_error_t oepint_handler(void)
                 log_printf("[USBOTG][HS] iepint: ep %d\n", ep_id);
                 /* now that transmit is complete, set ep state as IDLE */
                 /* calling upper handler, transmitted size read from DOEPSTS */
-                errcode = usbctrl_handle_outepevent(usb_otg_hs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
+                errcode = usbctrl_handle_outepevent(usb_otg_fs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
                 ctx->out_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
             }
             ep_id++;
@@ -483,7 +483,7 @@ static mbed_error_t iepint_handler(void)
                             /* now EP is idle */
                             ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
                             /* inform libctrl of transfert complete */
-                            errcode = ctx->in_eps[ep_id].handler(usb_otg_hs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
+                            errcode = ctx->in_eps[ep_id].handler(usb_otg_fs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
                             ctx->in_eps[ep_id].fifo = 0;
                             ctx->in_eps[ep_id].fifo_idx = 0;
                             ctx->in_eps[ep_id].fifo_size = 0;
@@ -522,7 +522,7 @@ static mbed_error_t iepint_handler(void)
                 /* an iepint for this EP is active */
                 log_printf("[USBOTG][HS] iepint: ep %d\n", ep_id);
                 /* calling upper handler */
-                errcode = usbctrl_handle_outepevent(usb_otg_hs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
+                errcode = usbctrl_handle_outepevent(usb_otg_fs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
                 ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
             }
             ep_id++;
@@ -825,7 +825,7 @@ void USBOTGFS_IRQHandler(uint8_t interrupt __attribute__((unused)),
 	uint32_t intsts = sr;
 	uint32_t intmsk = dr;
 
-	if (intsts & USBOTG_FS_GINTSTS_CMOD_Msk){
+	if (intsts & USBOTG_FS_GINTSTS_CMOD_Msk) {
 		log_printf("[USB FS] Int in Host mode !\n");
 	}
     uint32_t val = intsts;

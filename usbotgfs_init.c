@@ -174,11 +174,11 @@ mbed_error_t usbotgfs_initialize_core(usbotgfs_dev_mode_t mode)
     log_printf("[USB FS] AHB idle after %d loops\n", count);
 
 
-    log_printf("[USB FS] Core acknowledged reset after %d loops\n", count);
     /* 3 PHY clocks wait, (active wait here, as sys_sleep() is too slow */
 	for (uint32_t i = 0; i < 0xff; i++) {
 		continue;
     }
+    log_printf("[USB FS] Core acknowledge wait done\n");
 
     /*
      * 5. The software must unmask the following bits in the GINTMSK register.
@@ -195,6 +195,14 @@ mbed_error_t usbotgfs_initialize_core(usbotgfs_dev_mode_t mode)
     /*
      * 7. checking curMod at core init
      */
+
+    uint8_t cmod = get_reg(r_CORTEX_M_USBOTG_FS_GINTSTS, USBOTG_FS_GINTSTS_CMOD);
+    if (cmod == 1) {
+        log_printf("[USB FS] Core CMOD is set to Host mode !!!\n");
+        errcode = MBED_ERROR_INVSTATE;
+    } else {
+        log_printf("[USB FS] Core CMOD is in device mode.\n");
+    }
 err:
     return errcode;
 }
@@ -233,8 +241,11 @@ mbed_error_t usbotgfs_initialize_device(void)
 
 
 	set_reg(r_CORTEX_M_USBOTG_FS_GCCFG, 1, USBOTG_FS_GCCFG_VBUSBSEN); /* Enable the VBUS sensing “B” device */
-    /* connect device */
+
+    /* Clear software Disconnect bit */
     set_reg(r_CORTEX_M_USBOTG_FS_DCTL, 0, USBOTG_FS_DCTL_SDIS);
+    /* Power On programming Done */
+    set_reg(r_CORTEX_M_USBOTG_FS_DCTL, 1, USBOTG_FS_DCTL_POPRGDNE);
     return errcode;
 }
 

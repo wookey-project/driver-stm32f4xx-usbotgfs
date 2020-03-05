@@ -312,7 +312,7 @@ reset ? */
     usbotgfs_ctx.out_eps[0].fifo_size = 0; /* not yet configured */
     usbotgfs_ctx.in_eps[0].fifo_lck = false;
 
-    usbotgfs_ctx.speed = USBOTG_FS_SPEED_HS; /* default. In device mode, wait for enumeration */
+    usbotgfs_ctx.speed = USBOTG_FS_SPEED_FS; /* default. In device mode, wait for enumeration */
 
 err:
     return errcode;
