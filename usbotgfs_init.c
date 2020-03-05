@@ -208,9 +208,11 @@ mbed_error_t usbotgfs_initialize_device(void)
 //    set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_RXFLVLM);
 //XXX:    set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_NPTXFEM);
 	set_reg(r_CORTEX_M_USBOTG_FS_GUSBCFG, 1, USBOTG_FS_GUSBCFG_FDMOD); /* FIXME Force device mode */
+    /* sleep at least 25 ms after forcing device mode */
+    sys_sleep(SLEEP_MODE_DEEP, 30);
 
 
-    log_printf("[USB FS] dev init: set speed to HS\n");
+    log_printf("[USB FS] dev init: set speed to FS\n");
     /* set device speed to Full Speed */
 	set_reg(r_CORTEX_M_USBOTG_FS_DCFG, 0x3, USBOTG_FS_DCFG_DSPD);
     /* send packets to the application. send handshake based on NAK & STALL bits for
