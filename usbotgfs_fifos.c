@@ -181,10 +181,16 @@ mbed_error_t usbotgfs_reset_epx_fifo(usbotgfs_ep_t *ep)
         if (ep->dir == USBOTG_FS_EP_DIR_OUT) {
             /* using global RX fifo... GRXFIFOSZ set as global RX FIFO */
         } else {
+            uint16_t fifo_sz;
+            if (ep->mpsize < 64) {
+                fifo_sz = 64;
+            } else {
+                fifo_sz = ep->mpsize;
+            }
             set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), ctx->fifo_idx, USBOTG_FS_DIEPTXF_INEPTXSA);
             /* field is in 32bits words multiple */
-            set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), ep->mpsize / 4, USBOTG_FS_DIEPTXF_INEPTXFD);
-            ctx->fifo_idx += ep->mpsize;
+            set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), fifo_sz / 4, USBOTG_FS_DIEPTXF_INEPTXFD);
+            ctx->fifo_idx += fifo_sz;
         }
     }
     ep->fifo_idx = 0;

@@ -27,6 +27,11 @@
 #include "libc/types.h"
 #include "autoconf.h"
 
+typedef enum {
+    USBOTG_FS_PORT_LOWSPEED = 0,
+    USBOTG_FS_PORT_FULLSPEED = 1,
+    USBOTG_FS_PORT_HIGHSPEED = 2
+} usbotgfs_port_speed_t;
 
 
 typedef mbed_error_t (*usbotgfs_ioep_handler_t)(uint32_t dev_id, uint32_t size, uint8_t ep);
@@ -293,5 +298,8 @@ void usbotgfs_unbind(void);
 usbotgfs_ep_state_t usbotgfs_get_ep_state(uint8_t epnum, usbotgfs_ep_dir_t dir);
 
 uint32_t usbotgfs_get_ep_mpsize(void);
+
+
+usbotgfs_port_speed_t usbotgfs_get_speed(void);
 
 #endif /*!LIBUSBOTGFS_H_ */

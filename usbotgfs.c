@@ -1008,6 +1008,11 @@ usbotgfs_ep_state_t usbotgfs_get_ep_state(uint8_t epnum, usbotgfs_ep_dir_t dir)
     return USBOTG_FS_EP_STATE_INVALID;
 }
 
+usbotgfs_port_speed_t usbotgfs_get_speed(void)
+{
+    return USBOTG_FS_PORT_FULLSPEED;
+}
+
 /*
  * About generic part:
  * This part translate libusbctrl forward-declaration symbols to local symbols.
@@ -1052,5 +1057,5 @@ mbed_error_t usb_backend_drv_stall(uint8_t ep_id, usb_backend_drv_ep_dir_t dir)
     __attribute__ ((alias("usbotgfs_endpoint_stall")));
 
 uint32_t usb_backend_get_ep_mpsize(void) __attribute__ ((alias("usbotgfs_get_ep_mpsize")));
-
+usb_backend_drv_port_speed_t usb_backend_drv_get_speed(void) __attribute__ ((alias("usbotgfs_get_speed")));
 
