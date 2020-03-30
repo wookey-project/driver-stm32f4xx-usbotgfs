@@ -614,6 +614,7 @@ mbed_error_t usbotgfs_endpoint_set_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
             }
 
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_SNAK_Msk);
+            break;
         case USBOTG_FS_EP_DIR_OUT:
             if (ep_id >= USBOTGFS_MAX_OUT_EP) {
                 errcode = MBED_ERROR_INVPARAM;
@@ -737,6 +738,7 @@ mbed_error_t usbotgfs_endpoint_stall(uint8_t ep_id, usbotgfs_ep_dir_t dir)
             }
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_EPDIS_Msk);
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_STALL_Msk);
+            break;
         case USBOTG_FS_EP_DIR_OUT:
             if (ep_id >= USBOTGFS_MAX_OUT_EP) {
                 errcode = MBED_ERROR_INVPARAM;
