@@ -25,6 +25,7 @@
 #include "libc/regutils.h"
 #include "libc/types.h"
 #include "libc/stdio.h"
+#include "libc/sanhandlers.h"
 
 #include "api/libusbotgfs.h"
 #include "usbotgfs_regs.h"
@@ -339,6 +340,10 @@ static mbed_error_t oepint_handler(void)
                 }
                 if (callback_to_call == true) {
                     log_printf("[USBOTG][HS] oepint: calling callback\n");
+                    if (handler_sanity_check((void*)ctx->out_eps[ep_id].handler)) {
+                        sys_exit();
+                        goto err;
+                    }
                     errcode = ctx->out_eps[ep_id].handler(usb_otg_fs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
                     ctx->out_eps[ep_id].fifo_idx = 0;
                     if (end_of_transfer == true && ep_id == 0) {
@@ -356,6 +361,7 @@ static mbed_error_t oepint_handler(void)
             daint >>= 1;
         }
         set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_OEPINT);
+err:
 #else
         /* TODO: (FIXME host mode not working yet) here, this is a 'end of transmission' interrupt. Let's handle each
          * endpoint for which the interrupt rised */
@@ -483,6 +489,10 @@ static mbed_error_t iepint_handler(void)
                             /* now EP is idle */
                             ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
                             /* inform libctrl of transfert complete */
+                            if (handler_sanity_check((void*)ctx->in_eps[ep_id].handler)) {
+                                sys_exit();
+                                goto err;
+                            }
                             errcode = ctx->in_eps[ep_id].handler(usb_otg_fs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
                             ctx->in_eps[ep_id].fifo = 0;
                             ctx->in_eps[ep_id].fifo_idx = 0;
@@ -513,6 +523,7 @@ static mbed_error_t iepint_handler(void)
             daint >>= 1;
         }
         set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_IEPINT);
+err:
 #else
         /* here, this is a 'data received' interrupt  (Host mode) */
         uint16_t val = 0x1;
