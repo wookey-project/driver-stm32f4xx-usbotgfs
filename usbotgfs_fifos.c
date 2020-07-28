@@ -284,6 +284,14 @@ mbed_error_t usbotgfs_write_epx_fifo(const uint32_t size, usbotgfs_ep_t *ep)
     }
     ep->fifo_lck = true;
     usbotgfs_write_core_fifo(&(ep->fifo[ep->fifo_idx]), size, ep->id);
+    /* int overflow check */
+    if ((uint64_t)(ep->fifo_idx + size) >= ((uint32_t)4*1024*1024*1000)) {
+        /* In a nominal embedded usage, this should never arise as embedded devices never
+         * handle such amount of memory */
+        log_printf("USBOTG][HS] overflow detected!\n");
+        errcode = MBED_ERROR_NOMEM;
+        goto err;
+    }
     ep->fifo_idx += size;
     ep->fifo_lck = false;
 err:
