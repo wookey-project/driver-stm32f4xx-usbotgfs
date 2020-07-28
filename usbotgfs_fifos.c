@@ -165,7 +165,7 @@ mbed_error_t usbotgfs_reset_epx_fifo(usbotgfs_ep_t *ep)
          *  FIXME: this work is not made in the previous driver... Maybe we should correct this here.
          */
 
-        if (ctx->fifo_idx + USBOTG_HS_TX_CORE_FIFO_SZ >= CORE_FIFO_LENGTH) {
+        if (ctx->fifo_idx + USBOTG_FS_TX_CORE_FIFO_SZ >= CORE_FIFO_LENGTH) {
             errcode = MBED_ERROR_NOSTORAGE;
             goto err;
         }
@@ -285,7 +285,7 @@ mbed_error_t usbotgfs_write_epx_fifo(const uint32_t size, usbotgfs_ep_t *ep)
     ep->fifo_lck = true;
     usbotgfs_write_core_fifo(&(ep->fifo[ep->fifo_idx]), size, ep->id);
     /* int overflow check */
-    if ((uint64_t)(ep->fifo_idx + size) >= ((uint32_t)4*1024*1024*1000)) {
+    if (ep->fifo_idx >= ((uint32_t)4*1024*1024*1000 - size)) {
         /* In a nominal embedded usage, this should never arise as embedded devices never
          * handle such amount of memory */
         log_printf("USBOTG][HS] overflow detected!\n");
