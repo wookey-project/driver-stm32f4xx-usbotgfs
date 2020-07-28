@@ -35,6 +35,8 @@
 #include "generated/usb_otg_fs.h"
 #include "usbotgfs_handler.h"
 
+#define CORE_FIFO_LENGTH 4096
+
 void usbotgfs_read_core_fifo(volatile uint8_t *dest, volatile const uint32_t size, uint8_t ep)
 {
     uint32_t size_4bytes = size / 4;
@@ -163,6 +165,10 @@ mbed_error_t usbotgfs_reset_epx_fifo(usbotgfs_ep_t *ep)
          *  FIXME: this work is not made in the previous driver... Maybe we should correct this here.
          */
 
+        if (ctx->fifo_idx + USBOTG_HS_TX_CORE_FIFO_SZ >= CORE_FIFO_LENGTH) {
+            errcode = MBED_ERROR_NOSTORAGE;
+            goto err;
+        }
 
         /*
          */
@@ -189,6 +195,12 @@ mbed_error_t usbotgfs_reset_epx_fifo(usbotgfs_ep_t *ep)
             } else {
                 fifo_sz = ep->mpsize;
             }
+
+            if (ctx->fifo_idx + fifo_sz >= CORE_FIFO_LENGTH) {
+                errcode = MBED_ERROR_NOSTORAGE;
+                goto err;
+            }
+
             set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), ctx->fifo_idx, USBOTG_FS_DIEPTXF_INEPTXSA);
             /* field is in 32bits words multiple */
             set_reg(r_CORTEX_M_USBOTG_FS_DIEPTXF(ep->id), fifo_sz / 4, USBOTG_FS_DIEPTXF_INEPTXFD);
