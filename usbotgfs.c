@@ -854,6 +854,8 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
             //set_reg_bits(r_CORTEX_M_USBOTG_FS_GINTMSK, USBOTG_FS_GINTMSK_IEPINT_Msk);
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_IEPM(ep));
             break;
+
+
         case USBOTG_FS_EP_DIR_OUT:
             log_printf("[USBOTGFS] enable EP %d: dir OUT, mpsize %d, type %x\n", ep, local_mpsize, type);
 
@@ -894,7 +896,70 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
 
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_OEPM(ep));
             break;
+
+        case USBOTG_FS_EP_DIR_BOTH:
+            log_printf("[USBOTGFS] enable EP %d: dir IN & OUT, mpsize %d, type %x\n", ep, local_mpsize, type);
+
+            if (ep >= USBOTGFS_MAX_OUT_EP || ep >= USBOTGFS_MAX_IN_EP) {
+                errcode = MBED_ERROR_NOSTORAGE;
+                goto err;
+            }
+            ctx->out_eps[ep].id = ep;
+            ctx->out_eps[ep].dir = USBOTG_FS_EP_DIR_OUT;
+            ctx->out_eps[ep].configured = true;
+            ctx->out_eps[ep].mpsize = local_mpsize;
+            ctx->out_eps[ep].type = type;
+            ctx->out_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
+            ctx->out_eps[ep].handler = handler;
+
+
+            ctx->in_eps[ep].id = ep;
+            ctx->in_eps[ep].dir = USBOTG_FS_EP_DIR_IN;
+            ctx->in_eps[ep].configured = true;
+            ctx->in_eps[ep].mpsize = local_mpsize;
+            ctx->in_eps[ep].type = type;
+            ctx->in_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
+            ctx->in_eps[ep].handler = handler;
+
+            /* Maximum packet size */
+            set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep),
+                    local_mpsize, USBOTG_FS_DOEPCTL_MPSIZ_Msk(ep),
+                    USBOTG_FS_DOEPCTL_MPSIZ_Pos(ep));
+
+            set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), local_mpsize,
+                          USBOTG_FS_DIEPCTL_MPSIZ_Msk(ep),
+                          USBOTG_FS_DIEPCTL_MPSIZ_Pos(ep));
+
+
+
+            /*  USB active endpoint */
+            set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep), USBOTG_FS_DOEPCTL_USBAEP_Msk);
+            set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), USBOTG_FS_DIEPCTL_USBAEP_Msk);
+
+            /* FIXME Start data toggle */
+            if (type == USBOTG_FS_EP_TYPE_BULK || type == USBOTG_FS_EP_TYPE_INT) {
+                set_reg(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep), dtoggle, USBOTG_FS_DOEPCTL_SD0PID);
+                set_reg(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), dtoggle, USBOTG_FS_DIEPCTL_SD0PID);
+            }
+
+            /* Endpoint type */
+            set_reg(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep), type, USBOTG_FS_DOEPCTL_EPTYP);
+            set_reg(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), type, USBOTG_FS_DIEPCTL_EPTYP);
+
+
+            /* set EP FIFO */
+            usbotgfs_reset_epx_fifo(&(ctx->out_eps[ep]));
+
+
+            set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_OEPM(ep));
+            set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_IEPM(ep));
+
+            set_reg(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), ep, USBOTG_FS_DIEPCTL_CNAK);
+            break;
+
     }
+
+
 err:
     return errcode;
 }
@@ -1064,7 +1129,7 @@ mbed_error_t usb_backend_drv_configure_endpoint(uint8_t               ep,
                                          usb_backend_drv_ioep_handler_t handler)
     __attribute__ ((alias("usbotgfs_configure_endpoint")));
 
-mbed_error_t usb_backend_drv_get_ep_state(uint8_t epnum, usb_backend_drv_ep_dir_t dir)
+usb_backend_drv_ep_state_t usb_backend_drv_get_ep_state(uint8_t epnum, usb_backend_drv_ep_dir_t dir)
     __attribute__ ((alias("usbotgfs_get_ep_state")));
 mbed_error_t usb_backend_drv_send_data(uint8_t *src, uint32_t size, uint8_t ep)
     __attribute__ ((alias("usbotgfs_send_data")));
