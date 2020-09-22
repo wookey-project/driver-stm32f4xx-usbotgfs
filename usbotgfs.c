@@ -322,7 +322,7 @@ err:
  * Returns, for the current IP, the max data endpoint (not control) packet size
  * supported
  */
-uint32_t usbotgfs_get_ep_mpsize(void)
+uint16_t usbotgfs_get_ep_mpsize(void)
 {
     return MAX_EPx_PKT_SIZE;
 }
@@ -1003,6 +1003,7 @@ err:
  * in compliance with the currently enabled configuration and interface(s)
  * hold by the libUSBCtrl
  */
+
 mbed_error_t usbotgfs_activate_endpoint(uint8_t               ep_id,
                                         usbotgfs_ep_dir_t     dir)
 {
@@ -1013,14 +1014,33 @@ mbed_error_t usbotgfs_activate_endpoint(uint8_t               ep_id,
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
-    if (dir == USBOTG_FS_EP_DIR_IN) {
-        set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id),
-                USBOTG_FS_DIEPCTL_EPENA_Msk);
-    } else {
-        set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
-        set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id),
-                  USBOTG_FS_DOEPCTL_EPENA_Msk);
+    switch (dir) {
+        case  USBOTG_FS_EP_DIR_IN:
+            {
+                if (ep_id >= USBOTGFS_MAX_IN_EP) {
+                    errcode = MBED_ERROR_INVPARAM;
+                    goto err;
+                }
+                set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id),
+                        USBOTG_FS_DIEPCTL_EPENA_Msk);
+                break;
+            }
+        case USBOTG_FS_EP_DIR_OUT:
+            {
+                if (ep_id >= USBOTGFS_MAX_OUT_EP) {
+                    errcode = MBED_ERROR_INVPARAM;
+                    goto err;
+                }
+                set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
+                set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id),
+                        USBOTG_FS_DOEPCTL_EPENA_Msk);
+                break;
+            }
+        default:
+            errcode = MBED_ERROR_INVPARAM;
+            break;
     }
+
 err:
     return errcode;
 }

@@ -298,7 +298,7 @@ void usbotgfs_unbind(void);
 
 usbotgfs_ep_state_t usbotgfs_get_ep_state(uint8_t epnum, usbotgfs_ep_dir_t dir);
 
-uint32_t usbotgfs_get_ep_mpsize(void);
+uint16_t usbotgfs_get_ep_mpsize(void);
 
 
 usbotgfs_port_speed_t usbotgfs_get_speed(void);
