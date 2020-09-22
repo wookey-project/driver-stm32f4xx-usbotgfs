@@ -1165,6 +1165,6 @@ mbed_error_t usb_backend_drv_nak(uint8_t ep_id, usb_backend_drv_ep_dir_t dir)
 mbed_error_t usb_backend_drv_stall(uint8_t ep_id, usb_backend_drv_ep_dir_t dir)
     __attribute__ ((alias("usbotgfs_endpoint_stall")));
 
-uint32_t usb_backend_get_ep_mpsize(void) __attribute__ ((alias("usbotgfs_get_ep_mpsize")));
+uint16_t usb_backend_get_ep_mpsize(void) __attribute__ ((alias("usbotgfs_get_ep_mpsize")));
 usb_backend_drv_port_speed_t usb_backend_drv_get_speed(void) __attribute__ ((alias("usbotgfs_get_speed")));
 
