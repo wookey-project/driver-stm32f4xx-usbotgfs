@@ -1148,6 +1148,8 @@ mbed_error_t usb_backend_drv_configure_endpoint(uint8_t               ep,
                                          usb_backend_drv_ep_toggle_t  dtoggle,
                                          usb_backend_drv_ioep_handler_t handler)
     __attribute__ ((alias("usbotgfs_configure_endpoint")));
+mbed_error_t usb_backend_drv_deconfigure_endpoint(uint8_t ep)
+    __attribute__ ((alias("usbotgfs_deconfigure_endpoint")));
 
 usb_backend_drv_ep_state_t usb_backend_drv_get_ep_state(uint8_t epnum, usb_backend_drv_ep_dir_t dir)
     __attribute__ ((alias("usbotgfs_get_ep_state")));
