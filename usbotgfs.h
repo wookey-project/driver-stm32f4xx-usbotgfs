@@ -35,6 +35,9 @@
 #include "usbotgfs_regs.h"
 
 #define USBOTGFS_REG_CHECK_TIMEOUT 50
+#define CPT_HARD 100
+
+#define MAX_EP_HW 4
 
 #define MAX_TIME_DETACH     4000
 
@@ -73,15 +76,15 @@ typedef struct {
     bool                         configured;   /* is EP configured in current configuration ? */
     uint16_t                     mpsize;       /* max packet size (bitfield, 11 bits, in bytes) */
     usbotgfs_ep_type_t           type;         /* EP type */
-    volatile usbotgfs_ep_state_t state;        /* EP current state */
-    volatile usbotgfs_ep_dir_t   dir;
+    usbotgfs_ep_state_t          state;        /* EP current state */
+    usbotgfs_ep_dir_t            dir;
     usbotgfs_ioep_handler_t      handler;      /* EP Handler for (I|O)EPEVENT */
 
-    volatile uint8_t            *fifo;         /* associated RAM FIFO (recv) */
-    volatile uint32_t            fifo_idx;     /* current FIFO index  (recv) */
-    volatile uint32_t            fifo_size;    /* associated RAM FIFO max size (recv) */
-    volatile bool                fifo_lck;     /* DMA, locking mechanism (recv) */
-    volatile bool                core_txfifo_empty; /* core TxFIFO (Half) empty */
+    uint8_t            *fifo;         /* associated RAM FIFO (recv) */
+    uint32_t            fifo_idx;     /* current FIFO index  (recv) */
+    uint32_t            fifo_size;    /* associated RAM FIFO max size (recv) */
+    bool                fifo_lck;     /* DMA, locking mechanism (recv) */
+    bool                core_txfifo_empty; /* core TxFIFO (Half) empty */
 } usbotgfs_ep_t;
 
 #define USBOTGFS_MAX_IN_EP   8
@@ -97,7 +100,7 @@ typedef struct {
     uint16_t            fifo_idx;        /* consumed Core FIFO */
     usbotgfs_ep_t       in_eps[USBOTGFS_MAX_IN_EP];       /* list of HW supported IN EPs */
     usbotgfs_ep_t       out_eps[USBOTGFS_MAX_OUT_EP];      /* list of HW supported OUT EPs */
-    volatile usbotgfs_speed_t    speed;        /* device enumerated speed, default HS */
+    usbotgfs_speed_t    speed;        /* device enumerated speed, default HS */
 } usbotgfs_context_t;
 
 usbotgfs_context_t *usbotgfs_get_context(void);

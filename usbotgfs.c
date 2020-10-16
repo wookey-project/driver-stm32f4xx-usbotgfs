@@ -35,7 +35,12 @@
 #include "usbotgfs_fifos.h"
 #include "usbotgfs_handler.h"
 #include "usbotgfs_regs.h"
+
+#if defined(__FRAMAC__)
+#include "socs/stm32f439/usbctrl_backend.h"
+#else
 #include "libs/usbctrl/api/libusbctrl.h"
+#endif/*!__FRAMAC__*/
 
 
 #define ZERO_LENGTH_PACKET 0
@@ -87,21 +92,44 @@ static const char *devname = "usb-otg-fs";
 // TODO to use static uint8_t 	setup_packet[8];
 
 /* local context. Only one as there is one USB OTG device per SoC */
-static volatile usbotgfs_context_t usbotgfs_ctx = { 0 };
+
+#if defined(__FRAMAC__)
+usbotgfs_context_t usbotgfs_ctx = { 0 };
+#else
+/* the static keyword may be removed in replacement with MetACSL anotations specifying
+ * that the lonely function handling direct access to this variable is usbotghs_get_context
+ */
+static usbotgfs_context_t usbotgfs_ctx = { 0 };
+#endif/*!__FRAMAC__*/
+
+/*@
+  @ assigns \nothing ;
+  @ ensures \result == &usbotgfs_ctx ;
+  */
 
 usbotgfs_context_t *usbotgfs_get_context(void)
 {
     return (usbotgfs_context_t *)&usbotgfs_ctx;
 }
 
+
+/*@
+  @ assigns usbotgfs_ctx ;
+  @ ensures \result == MBED_ERROR_NONE || \result == MBED_ERROR_UNKNOWN ;
+  */
+/* TODO : memset & memcpy with framac */
 mbed_error_t usbotgfs_declare(void)
 {
     e_syscall_ret ret = 0;
 
     log_printf("[USBOTG][FS] Declaring device\n");
-    memset((void*)&(usbotgfs_ctx.dev), 0, sizeof(device_t));
 
+#if defined(__FRAMAC__)
+    /* TODO : memset & memcpy with framac */
+#else
+    memset((void*)&(usbotgfs_ctx.dev), 0, sizeof(device_t));
     memcpy((void*)usbotgfs_ctx.dev.name, devname, strlen(devname));
+#endif/*!__FRAMAC__*/
 
     usbotgfs_ctx.dev.address = USB_OTG_FS_BASE;
     usbotgfs_ctx.dev.size = 0x4000;
@@ -238,7 +266,20 @@ mbed_error_t usbotgfs_declare(void)
  *
  * At this point, the device is ready to accept SOF packets and perform control transfers on control endpoint 0.
  */
-//static mbed_error_t usbotgfs_core_init;
+
+/*@
+  @ requires is_valid_dev_mode(mode) ;
+  @ assigns usbotgfs_ctx \from indirect:ieph, indirect:oeph;
+  @ assigns usbotgfs_ctx ;
+  @ ensures \result == MBED_ERROR_NONE || \result == MBED_ERROR_INVPARAM || \result == MBED_ERROR_INITFAIL
+  || \result == MBED_ERROR_BUSY || \result == MBED_ERROR_UNSUPORTED_CMD || \result == MBED_ERROR_NOMEM ;
+  */
+
+/*
+FIXME : @ requires \separated(&usbotgfs_ctx,\union(ieph+(..),oeph+(..)));
+to add for framac messages, but :
+expecting a pointer to an object, found set<mbed_error_t (*)(uint32_t dev_id, uint32_t size, uint8_t ep)
+*/
 
 mbed_error_t usbotgfs_configure(usbotgfs_dev_mode_t mode,
                                 usbotgfs_ioep_handler_t ieph,
@@ -322,6 +363,11 @@ err:
  * Returns, for the current IP, the max data endpoint (not control) packet size
  * supported
  */
+/*@
+  @ assigns \nothing;
+  @ ensures \result == MAX_EPx_PKT_SIZE ;
+  */
+
 uint16_t usbotgfs_get_ep_mpsize(void)
 {
     return MAX_EPx_PKT_SIZE;
@@ -332,29 +378,88 @@ uint16_t usbotgfs_get_ep_mpsize(void)
  * send the data on the line (by activating the EP (field USBAEP of out EPs))
  * We must wait data sent IT to be sure that content is effectively transmitted
  */
+
+/*@
+    @ requires \valid(src);
+    @ requires \separated(src,&usbotgfs_ctx, (uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END));
+    @ assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)),usbotgfs_ctx, usbotgfs_ctx.in_eps[ep_id];
+
+    @ behavior bad_ctx:
+    @   assumes &usbotgfs_ctx == \null ;
+    @   assigns \nothing ;
+    @   ensures \result == MBED_ERROR_INVSTATE ;
+
+    @ behavior bad_ep:
+    @   assumes &usbotgfs_ctx != \null ;
+    @   assumes (ep_id >= USBOTGHS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
+    @   assigns \nothing ;
+    @   ensures \result == MBED_ERROR_INVPARAM ;
+
+    @ behavior not_configured:
+    @   assumes &usbotgfs_ctx != \null ;
+    @   assumes !(ep_id >= USBOTGFS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
+    @   assumes ((usbotgfs_ctx.in_eps[ep_id].configured == \false) || (usbotgfs_ctx.in_eps[ep_id].mpsize == 0));
+    @   ensures \result == MBED_ERROR_INVSTATE ;
+
+    @ behavior configured:
+    @   assumes &usbotgfs_ctx != \null ;
+    @   assumes !(ep_id >= USBOTGFS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
+    @   assumes !((usbotgfs_ctx.in_eps[ep_id].configured == \false) || (usbotgfs_ctx.in_eps[ep_id].mpsize == 0));
+    @   ensures \result == MBED_ERROR_INVPARAM || \result == MBED_ERROR_BUSY || \result == MBED_ERROR_INVSTATE || \result == MBED_ERROR_NONE ;
+
+    @ complete behaviors ;
+    @ disjoint behaviors ;
+*/
+
+/*
+TODO : add specification for !CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
+*/
+
 mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 {
     uint32_t packet_count = 0;
     mbed_error_t errcode = MBED_ERROR_NONE;
     uint32_t fifo_size = 0;
     usbotgfs_context_t *ctx = usbotgfs_get_context();
+
+    if (ctx == NULL) {
+        errcode = MBED_ERROR_INVSTATE;
+        goto err_init;
+    }
+
     usbotgfs_ep_t *ep = NULL;
 
 #if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
-      ep = &ctx->in_eps[ep_id];
+    if(ep_id >= USBOTGFS_MAX_IN_EP || ep_id >= MAX_EP_HW)
+    {
+        errcode = MBED_ERROR_INVPARAM;
+        goto err_init;
+    }
+    ep = &ctx->in_eps[ep_id];
 #else
-      ep = &ctx->out_eps[ep_id];
+    if(ep_id >= USBOTGHS_MAX_OUT_EP)
+    {
+        errcode = MBED_ERROR_INVPARAM;
+        goto err_init
+    }
+    ep = &ctx->out_eps[ep_id];
 #endif
-    if (!ep->configured) {
+
+    if (!ep->configured || !ep->mpsize) {
         log_printf("[USBOTG][FS] ep %d not configured\n", ep->id);
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
+
+    /* @ assert ep == &usbotghs_ctx.in_eps[ep_id] ; */
+
     fifo_size = USBOTG_FS_TX_CORE_FIFO_SZ;
+
     /* configure EP FIFO internal informations */
+
     if ((errcode = usbotgfs_set_xmit_fifo(src, size, ep_id)) != MBED_ERROR_NONE) {
        log_printf("[USBOTG][FS] failed to set EP%d TxFIFO!\n", ep_id);
-        goto err;
+        goto err_init;
     }
     /*
      * Here, we have to split the src content, taking into account the
@@ -408,11 +513,12 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Msk(ep_id),
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Pos(ep_id));
     }
+    ep->state = USBOTG_FS_EP_STATE_DATA_IN_WIP;
+
     /* 2. Enable endpoint for transmission. */
     set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id),
             USBOTG_FS_DIEPCTL_CNAK_Msk | USBOTG_FS_DIEPCTL_EPENA_Msk);
 
-    ep->state = USBOTG_FS_EP_STATE_DATA_IN_WIP;
 #else
     /* EP 0 is not able to handle more than one packet of mpsize size per transfer. For bigger
      * transfers, the driver must fragment data transfer transparently */
@@ -448,6 +554,17 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
      * not finished) */
     if (ep_id == 0 && size > ep->mpsize) {
        log_printf("[USBOTG][FS] fragment: initiate the first fragment to send (MPSize) on EP0\n");
+
+       /*@
+          @ loop invariant \valid_read(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id));
+          @ loop invariant \valid_read(r_CORTEX_M_USBOTG_FS_DSTS);
+          @ loop invariant ep->state == USBOTG_FS_EP_STATE_DATA_IN_WIP;
+          @ loop invariant 0<=cpt<= CPT_HARD ;
+          @ loop assigns \nothing ;
+          @ loop variant CPT_HARD - cpt ;
+          */
+
+#ifndef __FRAMAC__
         /* wait for enough space in TxFIFO */
         while (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV) < (ep->mpsize / 4)) {
             if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
@@ -456,6 +573,24 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
                 goto err;
             }
         }
+#else
+        for (uint8_t cpt=0; cpt<CPT_HARD; cpt++)
+        {
+            if (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV) < (ep->mpsize / 4)) {
+                if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
+                    log_printf("[USBOTG][FS] Suspended!\n");
+                    errcode = MBED_ERROR_BUSY;
+                    goto err;
+                }
+            }
+        }
+#endif
+
+#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
+        ep->state = USBOTG_FS_EP_STATE_DATA_IN;
+#else
+        ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
+#endif
         /* write data from SRC to FIFO */
         usbotgfs_write_epx_fifo(ep->mpsize, ep);
         goto err;
@@ -471,7 +606,15 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
     /*
      * First, we push FIFO size multiple into the FIFO
      */
+
+    /*@
+      @ loop invariant \valid_read(r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id));
+      @ loop invariant \separated(&usbotghs_ctx,r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id),r_CORTEX_M_USBOTG_HS_GINTMSK, USBOTG_HS_DEVICE_FIFO(usbotghs_ctx.in_eps[ep_id].id) )  ;
+      @ loop assigns  residual_size, *ep, *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END));
+      @ loop variant (residual_size - fifo_size);
+      */
     while (residual_size >= fifo_size) {
+#ifndef __FRAMAC__
         while (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV) < (fifo_size / 4)) {
             if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
                 log_printf("[USBOTG][FS] Suspended!\n");
@@ -479,24 +622,76 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
                 goto err;
             }
         }
+#else
+        /*@
+          @ loop invariant \valid_read(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id));
+          @ loop invariant 0<=cpt<= CPT_HARD ;
+          @ loop assigns \nothing ;
+          @ loop variant CPT_HARD - cpt ;
+          */
+
+        for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+            if (get_reg(r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id), USBOTG_HS_DTXFSTS_INEPTFSAV) < (fifo_size / 4)) {
+                if (get_reg(r_CORTEX_M_USBOTG_HS_DSTS, USBOTG_HS_DSTS_SUSPSTS)){
+                    log_printf("[USBOTG][HS] Suspended!\n");
+                    errcode = MBED_ERROR_BUSY;
+                    goto err;
+                }
+            }
+        }
+#endif
+
+        if (residual_size == fifo_size) {
+            /* last block, no more WIP */
+#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
+            ep->state = USBOTG_FS_EP_STATE_DATA_IN;
+
+#else
+            ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
+#endif
+        }
+
         /* write data from SRC to FIFO */
         usbotgfs_write_epx_fifo(fifo_size, ep);
+
+
         /* wait for XMIT data to be transfered (wait for iepint (or oepint in
          * host mode) to set the EP in correct state */
-        //usbotgfs_wait_for_xmit_complete(ep);
         residual_size -= fifo_size;
         log_printf("[USBOTG][FS] EP: %d: residual: %d\n", ep_id, residual_size);
     }
     /* Now, if there is residual size shorter than FIFO size, just send it */
     if (residual_size > 0) {
         /* wait while there is enough space in TxFIFO */
+
+#ifndef __FRAMAC__
         while (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV)  < ((residual_size / 4) + (residual_size & 3 ? 1 : 0))) {
-            if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
-                log_printf("[USBOTG][FS] Suspended!\n");
-                errcode = MBED_ERROR_BUSY;
-                goto err;
+#else
+            /*@
+              @ loop invariant 0<=cpt<= CPT_HARD ;
+              @ loop assigns cpt ;
+              @ loop variant CPT_HARD - cpt;
+              */
+
+        for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+            if (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV)  < ((residual_size / 4) + (residual_size & 3 ? 1 : 0))) {
+#endif
+                if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
+                    log_printf("[USBOTG][FS] Suspended!\n");
+                    errcode = MBED_ERROR_BUSY;
+                    goto err;
+                }
+#ifdef __FRAMAC__
             }
+#endif
         }
+
+#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
+        ep->state = USBOTG_FS_EP_STATE_DATA_IN;
+#else
+        ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
+#endif
+        log_printf("[USBOTGFS] write %d len data on ep %d core fifo\n", residual_size, ep->id);
         /* set the EP state to DATA OUT WIP (not yet transmitted) */
         usbotgfs_write_epx_fifo(residual_size, ep);
         /* wait for XMIT data to be transfered (wait for iepint (or oepint in
@@ -508,21 +703,42 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 
     if(get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)) {
         errcode = MBED_ERROR_BUSY;
+        goto err;
     }
+    return errcode;
 err:
-    /* From whatever we come from to this point, the current transfer is complete
-     * (with failure or not on upper level). IEPINT can inform the upper layer */
-#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
-        ep->state = USBOTG_FS_EP_STATE_DATA_IN;
+#if defined(__FRAMAC__)
+    usbotghs_ctx.in_eps[ep_id].state = USBOTG_HS_EP_STATE_IDLE ;
 #else
-        ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
-#endif
+    ep->state = USBOTG_FS_EP_STATE_IDLE;
+#endif/*__FRAMAC__*/
+err_init:
     return errcode;
 }
 
 /*
  * Send a Zero-length packet into EP 'ep'
  */
+ /*@
+   @ requires \separated(((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)), &usbotghs_ctx);
+   @ assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)) ;
+   @ ensures (CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE && ep_id >= USBOTGFS_MAX_IN_EP) ==> \result == MBED_ERROR_INVPARAM ;
+   @ ensures (!CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE && ep_id >= USBOTGFS_MAX_OUT_EP) ==> \result == MBED_ERROR_INVPARAM ;
+   @ ensures (CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \false)
+   <==> \result == MBED_ERROR_INVSTATE ;
+   @ ensures (!CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \false)
+   ==> \result == MBED_ERROR_INVSTATE ;
+   @ ensures (CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \true)
+   <==> \result == MBED_ERROR_BUSY || \result == MBED_ERROR_NONE ;
+   @ ensures (!CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \true)
+   ==> \result == MBED_ERROR_BUSY || \result == MBED_ERROR_NONE ;
+   */
+
+/*
+  spec ok with CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE == 1
+  TODO : <==> to be prooved with CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE == 0
+*/
+
 mbed_error_t usbotgfs_send_zlp(uint8_t ep_id)
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
@@ -530,8 +746,16 @@ mbed_error_t usbotgfs_send_zlp(uint8_t ep_id)
     usbotgfs_ep_t *ep = NULL;
 
 #if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+    if (ep_id >= USBOTGFS_MAX_IN_EP) {
+        errcode = MBED_ERROR_INVPARAM;
+        goto err;
+    }
     ep = &ctx->in_eps[ep_id];
 #else
+    if (ep_id >= USBOTGFS_MAX_OUT_EP) {
+        errcode = MBED_ERROR_INVPARAM;
+        goto err;
+    }
     ep = &ctx->out_eps[ep_id];
 #endif
     if (!ep->configured) {
@@ -542,13 +766,22 @@ mbed_error_t usbotgfs_send_zlp(uint8_t ep_id)
     /*
      * Be sure that previous transmission is finished before configuring another one
      */
-    while (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV) <
-            USBOTG_FS_TX_CORE_FIFO_SZ / 4) {
-        /* Are we suspended? */
-        if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
-            log_printf("[USBOTG][FS] Suspended!\n");
-            errcode = MBED_ERROR_BUSY;
-            goto err;
+    /*@
+      @ loop invariant \valid(r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id));
+      @ loop invariant 0<=cpt<= CPT_HARD ;
+      @ loop assigns \nothing ;
+      @ loop variant CPT_HARD - cpt ;
+      */
+
+    for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+        if (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV) <
+                USBOTG_FS_TX_CORE_FIFO_SZ / 4) {
+            /* Are we suspended? */
+            if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
+                log_printf("[USBOTG][FS] Suspended!\n");
+                errcode = MBED_ERROR_BUSY;
+                goto err;
+            }
         }
     }
 
@@ -584,11 +817,17 @@ mbed_error_t usbotgfs_global_stall(void)
     return errcode;
 }
 
+/*@
+  @ assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)) ;
+  @ ensures (&usbotgfs_ctx == \null) ==> \result == MBED_ERROR_INVSTATE ;
+  @ ensures (&usbotgfs_ctx != \null) ==> ( \result == MBED_ERROR_INVPARAM ||
+  \result == MBED_ERROR_INVSTATE || \result == MBED_ERROR_BUSY || \result ==MBED_ERROR_NONE  ) ;
+  */
+
 mbed_error_t usbotgfs_endpoint_set_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
     usbotgfs_context_t *ctx = usbotgfs_get_context();
-    uint32_t count = 0;
     /* sanitize */
     if (ctx == NULL) {
         errcode = MBED_ERROR_INVSTATE;
@@ -610,11 +849,20 @@ mbed_error_t usbotgfs_endpoint_set_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
                 goto err;
             }
             /* wait for end of current transmission */
-            while (get_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_EPENA_Msk, USBOTG_FS_DIEPCTL_EPENA_Pos))  {
-                if (++count > USBOTGFS_REG_CHECK_TIMEOUT){
-                    log_printf("[USBOTG][FS] HANG! DIEPCTL:EPENA\n");
-                    errcode = MBED_ERROR_BUSY;
-                    goto err;
+            /*@
+              @ loop invariant 0<=cpt<= CPT_HARD ;
+              @ loop assigns  count ;
+              @ loop variant CPT_HARD - cpt ;
+              */
+
+
+            for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+                if (get_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_EPENA_Msk, USBOTG_FS_DIEPCTL_EPENA_Pos))  {
+                    if (cpt > USBOTGFS_REG_CHECK_TIMEOUT){
+                        log_printf("[USBOTG][FS] HANG! DIEPCTL:EPENA\n");
+                        errcode = MBED_ERROR_BUSY;
+                        goto err;
+                    }
                 }
             }
 
@@ -630,11 +878,19 @@ mbed_error_t usbotgfs_endpoint_set_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
                 goto err;
             }
             /* wait for end of current transmission */
-            while (get_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_EPENA_Msk, USBOTG_FS_DOEPCTL_EPENA_Pos))  {
-                if (++count > USBOTGFS_REG_CHECK_TIMEOUT){
-                    log_printf("[USBOTG][FS] HANG! DOEPCTL:EPENA\n");
-                    errcode = MBED_ERROR_BUSY;
-                    goto err;
+                /*@
+                  @ loop invariant 0<=cpt<= CPT_HARD ;
+                  @ loop assigns \nothing ;
+                  @ loop variant CPT_HARD - cpt ;
+                  */
+
+            for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+                if (get_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_EPENA_Msk, USBOTG_FS_DOEPCTL_EPENA_Pos))  {
+                    if (cpt > USBOTGFS_REG_CHECK_TIMEOUT){
+                        log_printf("[USBOTG][FS] HANG! DOEPCTL:EPENA\n");
+                        errcode = MBED_ERROR_BUSY;
+                        goto err;
+                    }
                 }
             }
 
@@ -647,6 +903,64 @@ mbed_error_t usbotgfs_endpoint_set_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
 err:
     return errcode;
 }
+
+/*@
+  @   requires \separated(&usbotgfs_ctx,((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)) ) ;
+  @   assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)) ;
+
+  @ behavior bad_ctx:
+  @   assumes &usbotgfs_ctx == \null ;
+  @   ensures \result == MBED_ERROR_INVSTATE ;
+
+  @ behavior dir_in_bad_epid:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   assumes ep_id >= USBOTGFS_MAX_IN_EP ;
+  @   ensures \result == MBED_ERROR_INVPARAM ;
+
+  @ behavior dir_in_not_configured:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   assumes ep_id < USBOTGFS_MAX_IN_EP ;
+  @   assumes usbotghs_ctx.in_eps[ep_id].configured == \false ;
+  @   ensures \result == MBED_ERROR_INVSTATE ;
+
+  @ behavior dir_in_configured_epid_0:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   assumes ep_id < USBOTGFS_MAX_IN_EP ;
+  @   assumes usbotgfs_ctx.in_eps[ep_id].configured == \true ;
+  @   assumes ep_id == 0 ;
+  @   ensures \result == MBED_ERROR_NONE ;
+
+  @ behavior dir_in_out_MBED_ERROR_INVPARAM:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes ((dir == USBOTG_FS_EP_DIR_IN && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \true &&
+  ep_id != 0 && ep_id >= USBOTGFS_MAX_OUT_EP) || (dir == USBOTG_FS_EP_DIR_OUT && ep_id >= USBOTGFS_MAX_OUT_EP )) ;
+  @   ensures \result == MBED_ERROR_INVPARAM ;
+
+  @ behavior dir_in_out_MBED_ERROR_INVSTATE:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes (dir == USBOTG_HS_EP_DIR_IN && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \true &&
+  ep_id != 0 && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \false) ||
+  ( dir == USBOTG_FS_EP_DIR_OUT && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \false ) ;
+  @   ensures \result == MBED_ERROR_INVSTATE ;
+
+  @ behavior dir_in_out_configured_MBED_ERROR_NONE:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes (dir == USBOTG_FS_EP_DIR_IN && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \true &&
+  ep_id != 0 && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \true) ||
+  ( dir == USBOTG_FS_EP_DIR_OUT && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \true ) ;
+  @   ensures \result == MBED_ERROR_NONE ;
+
+  @ behavior other_dir:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir != USBOTG_FS_EP_DIR_OUT && dir != USBOTG_FS_EP_DIR_IN ;
+  @   ensures \result == MBED_ERROR_INVPARAM ;
+
+  @ complete behaviors;
+  @ disjoint behaviors;
+  */
 
 mbed_error_t usbotgfs_endpoint_clear_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
 {
@@ -677,6 +991,9 @@ mbed_error_t usbotgfs_endpoint_clear_nak(uint8_t ep_id, usbotgfs_ep_dir_t dir)
                 goto err;
             }
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_CNAK_Msk);
+            if (ep_id == 0) {
+                break;
+            }
             __explicit_fallthrough
         case USBOTG_FS_EP_DIR_OUT:
             log_printf("[USBOTG][FS] CNAK on OUT ep %d\n", ep_id);
@@ -702,6 +1019,10 @@ err:
 }
 
 
+/*@
+  @ ensures \result == MBED_ERROR_NONE ;
+  @ assigns \nothing ;
+  @*/
 /*
  * Clear the global STALL mode for the device
  */
@@ -710,6 +1031,16 @@ mbed_error_t usbotgfs_global_stall_clear(void)
     mbed_error_t errcode = MBED_ERROR_NONE;
     return errcode;
 }
+
+/*@
+  @ assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)) ;
+  @ ensures (&usbotgfs_ctx == \null) ==> (\result == MBED_ERROR_INVSTATE) ;
+  @ ensures ((&usbotgfs_ctx == \null) && (dir == USBOTG_FS_EP_DIR_IN )) ==>
+  (\result == MBED_ERROR_INVSTATE || \result == MBED_ERROR_INVPARAM || \result == MBED_ERROR_NONE ||  \result == MBED_ERROR_BUSY ) ;
+  @ ensures ((&usbotgfs_ctx == \null) && (dir == USBOTG_FS_EP_DIR_OUT )) ==>
+  (\result == MBED_ERROR_INVSTATE || \result == MBED_ERROR_INVPARAM || \result == MBED_ERROR_NONE ||  \result == MBED_ERROR_BUSY ) ;
+  @ ensures ((&usbotgfs_ctx == \null) && (dir != USBOTG_FS_EP_DIR_OUT ) && (dir != USBOTG_FS_EP_DIR_IN ) ) ==> (\result == MBED_ERROR_INVPARAM) ;
+  */
 
 
 /*
@@ -736,14 +1067,22 @@ mbed_error_t usbotgfs_endpoint_stall(uint8_t ep_id, usbotgfs_ep_dir_t dir)
                 goto err;
             }
             /* wait for end of current transmission */
-            while (get_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_EPENA_Msk, USBOTG_FS_DIEPCTL_EPENA_Pos))  {
-                if (++count > USBOTGFS_REG_CHECK_TIMEOUT){
-                    log_printf("[USBOTG][FS] HANG! DIEPCTL:EPENA\n");
-                    errcode = MBED_ERROR_BUSY;
-                    goto err;
-                }
 
-                continue; //FIXME TIMEOUT
+            /*@
+              @ loop invariant 0<=cpt<= CPT_HARD ;
+              @ loop assigns count ;
+              @ loop variant CPT_HARD - cpt;
+              */
+            for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+                if (get_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_EPENA_Msk, USBOTG_FS_DIEPCTL_EPENA_Pos))  {
+                    if (cpt > USBOTGFS_REG_CHECK_TIMEOUT){
+                        log_printf("[USBOTG][FS] HANG! DIEPCTL:EPENA\n");
+                        errcode = MBED_ERROR_BUSY;
+                        goto err;
+                    }
+
+                    continue; //FIXME TIMEOUT
+                }
             }
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_EPDIS_Msk);
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id), USBOTG_FS_DIEPCTL_STALL_Msk);
@@ -758,11 +1097,20 @@ mbed_error_t usbotgfs_endpoint_stall(uint8_t ep_id, usbotgfs_ep_dir_t dir)
                 goto err;
             }
             /* wait for end of current transmission */
-            while (get_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_EPENA_Msk, USBOTG_FS_DOEPCTL_EPENA_Pos))  {
-                if (++count > USBOTGFS_REG_CHECK_TIMEOUT){
-                    log_printf("[USBOTG][FS] HANG! DIEPCTL:EPENA\n");
-                    errcode = MBED_ERROR_BUSY;
-                    goto err;
+
+            /*@
+              @ loop invariant 0<=cpt<= CPT_HARD ;
+              @ loop assigns count ;
+              @ loop variant CPT_HARD - cpt;
+              */
+
+            for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
+                if (get_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_EPENA_Msk, USBOTG_FS_DOEPCTL_EPENA_Pos))  {
+                    if (++count > USBOTGFS_REG_CHECK_TIMEOUT){
+                        log_printf("[USBOTG][FS] HANG! DIEPCTL:EPENA\n");
+                        errcode = MBED_ERROR_BUSY;
+                        goto err;
+                    }
                 }
             }
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_EPDIS_Msk);
@@ -780,6 +1128,10 @@ err:
 /*
  * Clear the STALL mode for the given EP
  */
+/*@
+  @ ensures \result == MBED_ERROR_NONE ;
+  @ assigns \nothing ;
+  @*/
 mbed_error_t usbotgfs_endpoint_stall_clear(uint8_t ep, usbotgfs_ep_dir_t dir)
 {
     mbed_error_t errcode = MBED_ERROR_NONE;
@@ -793,6 +1145,33 @@ mbed_error_t usbotgfs_endpoint_stall_clear(uint8_t ep, usbotgfs_ep_dir_t dir)
  * configure a new endpoint with the given configuration (type, mode, data toggle,
  * FIFO informations)
  */
+/*@
+  @ requires \separated(&usbotgfs_ctx.out_eps[0..(USBOTGFS_MAX_OUT_EP-1)], &usbotgfs_ctx.in_eps[0..(USBOTGFS_MAX_IN_EP-1)],((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)));
+  @ assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)), usbotgfs_ctx.in_eps[0..(USBOTGFS_MAX_IN_EP-1)], usbotgfs_ctx, usbotgfs_ctx.out_eps[0..(USBOTGFS_MAX_OUT_EP-1)] ;
+
+  @ behavior bad_ctx:
+  @   assumes &usbotgfs_ctx == \null ;
+  @   ensures \result == MBED_ERROR_INVSTATE ;
+
+  @ behavior USBOTG_FS_EP_DIR_IN:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   ensures \result == MBED_ERROR_NONE || \result == MBED_ERROR_NOSTORAGE ;
+
+  @ behavior USBOTG_FS_EP_DIR_OUT:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_OUT ;
+  @   ensures \result == MBED_ERROR_NONE || \result == MBED_ERROR_NOSTORAGE ;
+
+  @ behavior default:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir != USBOTG_FS_EP_DIR_OUT && dir != USBOTG_FS_EP_DIR_IN  ;
+  @   ensures \result == MBED_ERROR_NONE ;
+
+  @ complete behaviors ;
+  @ disjoint behaviors ;
+  */
+
 mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
                                          usbotgfs_ep_type_t      type,
                                          usbotgfs_ep_dir_t       dir,
@@ -808,7 +1187,7 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
-    /* truncating to max 64 bytes whatever mpsize is */
+    /* truncating to max 64 bytes whatever mpsize is, Fullspeed specific */
     uint32_t local_mpsize = 64;
     if (mpsize < 64) {
         local_mpsize = mpsize;
@@ -829,9 +1208,6 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
             ctx->in_eps[ep].type = type;
             ctx->in_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
             ctx->in_eps[ep].handler = handler;
-            if (ep <= USBOTGFS_MAX_OUT_EP) {
-                ctx->out_eps[ep].configured = false;
-            }
 
             /* set EP configuration */
             set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), type,
@@ -949,17 +1325,19 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
 
             /* set EP FIFO */
             usbotgfs_reset_epx_fifo(&(ctx->out_eps[ep]));
+            usbotgfs_reset_epx_fifo(&(ctx->in_eps[ep]));
 
 
             set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_OEPM(ep));
-            set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_IEPM(ep));
 
+            set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), USBOTG_FS_DIEPCTL_USBAEP_Msk);
             set_reg(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), ep, USBOTG_FS_DIEPCTL_CNAK);
+            set_reg_bits(r_CORTEX_M_USBOTG_FS_DAINTMSK, USBOTG_FS_DAINTMSK_IEPM(ep));
             break;
 
+        default:
+            break;
     }
-
-
 err:
     return errcode;
 }
@@ -979,6 +1357,13 @@ mbed_error_t usbotgfs_deconfigure_endpoint(uint8_t ep)
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
+
+    if((ep >= USBOTGFS_MAX_OUT_EP) || (ep >= USBOTGFS_MAX_IN_EP))
+    {
+        errcode = MBED_ERROR_INVPARAM;
+        goto err;
+    }
+
 
     clear_reg_bits(r_CORTEX_M_USBOTG_FS_GINTMSK, USBOTG_FS_GINTMSK_NPTXFEM_Msk | USBOTG_FS_GINTMSK_RXFLVLM_Msk);
     if (ctx->in_eps[ep].configured == true) {
@@ -1003,6 +1388,52 @@ err:
  * in compliance with the currently enabled configuration and interface(s)
  * hold by the libUSBCtrl
  */
+
+/*@
+  @  assigns *(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id)) ;
+  @  assigns *(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id)) ;
+
+  @ behavior badctx:
+  @    assumes &usbotgfs_ctx == \null ;
+  @    ensures r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id) == \old(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id)) ;
+  @    ensures r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id) == \old(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id)) ;
+  @    ensures \result == MBED_ERROR_INVSTATE ;
+
+
+  @ behavior dir_in_bad_ep_id:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   assumes ep_id >= USBOTGFS_MAX_IN_EP ;
+  @   ensures \result == MBED_ERROR_INVPARAM ;
+
+  @ behavior dir_out_bad_ep_id:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_OUT ;
+  @   assumes ep_id >= USBOTGFS_MAX_OUT_EP ;
+  @   ensures \result == MBED_ERROR_INVPARAM ;
+
+  @ behavior other_dir:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir != USBOTG_FS_EP_DIR_OUT && dir != USBOTG_FS_EP_DIR_IN ;
+  @   ensures \result == MBED_ERROR_INVPARAM ;
+
+  @ behavior dir_in_ok:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   assumes ep_id < USBOTGFS_MAX_IN_EP ;
+  @   ensures \result == MBED_ERROR_NONE ;
+
+  @ behavior dir_out_ok:
+  @   assumes &usbotgfs_ctx != \null ;
+  @   assumes dir == USBOTG_FS_EP_DIR_OUT ;
+  @   assumes ep_id < USBOTGFS_MAX_OUT_EP ;
+  @   ensures \result == MBED_ERROR_NONE ;
+
+
+  @ complete behaviors;
+  @ disjoint behaviors;
+  @*/
+
 
 mbed_error_t usbotgfs_activate_endpoint(uint8_t               ep_id,
                                         usbotgfs_ep_dir_t     dir)
@@ -1090,10 +1521,45 @@ mbed_error_t usbotgfs_enpoint_nak_clear(uint8_t ep)
     return errcode;
 }
 
+
+/*@
+  @ assigns *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END)) ;
+  */
 void usbotgfs_set_address(uint16_t addr)
 {
     set_reg(r_CORTEX_M_USBOTG_FS_DCFG, addr, USBOTG_FS_DCFG_DAD);
 }
+
+/*@
+
+  @  assigns \nothing ;
+
+  @ behavior DIR_IN_EPNUM_BIG:
+  @   assumes (dir == USBOTG_FS_EP_DIR_IN && epnum >= USBOTGFS_MAX_IN_EP);
+  @   ensures \result == USBOTG_HS_EP_STATE_INVALID ;
+
+  @ behavior DIR_OUT_EPNUM_BIG:
+  @   assumes (dir == USBOTG_FS_EP_DIR_OUT && epnum >= USBOTGFS_MAX_OUT_EP);
+  @   ensures \result == USBOTG_HS_EP_STATE_INVALID ;
+
+  @ behavior DIR_IN:
+  @   assumes dir == USBOTG_FS_EP_DIR_IN ;
+  @   assumes epnum < USBOTGFS_MAX_IN_EP ;
+  @   ensures \result == usbotgfs_ctx.in_eps[epnum].state ;
+
+  @ behavior DIR_OUT:
+  @   assumes dir == USBOTG_FS_EP_DIR_OUT ;
+  @   assumes epnum < USBOTGFS_MAX_OUT_EP ;
+  @   ensures \result == usbotgfs_ctx.out_eps[epnum].state ;
+
+  @ behavior other_dir:
+  @   assumes (dir != USBOTG_FS_EP_DIR_OUT && dir != USBOTG_FS_EP_DIR_IN) ;
+  @   ensures \result == USBOTG_FS_EP_STATE_INVALID ;
+
+  @ complete behaviors ;
+  @ disjoint behaviors ;
+
+*/
 
 usbotgfs_ep_state_t usbotgfs_get_ep_state(uint8_t epnum, usbotgfs_ep_dir_t dir)
 {
@@ -1117,6 +1583,10 @@ usbotgfs_ep_state_t usbotgfs_get_ep_state(uint8_t epnum, usbotgfs_ep_dir_t dir)
     return USBOTG_FS_EP_STATE_INVALID;
 }
 
+/*@
+  @ assigns \nothing ;
+  @ ensures \result == USBOTG_HS_PORT_FULLSPEED ;
+  */
 usbotgfs_port_speed_t usbotgfs_get_speed(void)
 {
     return USBOTG_FS_PORT_FULLSPEED;
