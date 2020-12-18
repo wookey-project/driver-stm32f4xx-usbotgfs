@@ -76,7 +76,7 @@ typedef struct {
     bool                         configured;   /* is EP configured in current configuration ? */
     uint16_t                     mpsize;       /* max packet size (bitfield, 11 bits, in bytes) */
     usbotgfs_ep_type_t           type;         /* EP type */
-    usbotgfs_ep_state_t          state;        /* EP current state */
+    uint8_t                      state;        /* EP current state */
     usbotgfs_ep_dir_t            dir;
     usbotgfs_ioep_handler_t      handler;      /* EP Handler for (I|O)EPEVENT */
 
