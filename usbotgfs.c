@@ -543,7 +543,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 #endif
         /* write data from SRC to FIFO */
         usbotgfs_write_epx_fifo(ep->mpsize, ep);
-        goto err;
+        goto err_fragment;
     }
 
     /*
@@ -659,6 +659,9 @@ err:
     set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_IDLE);
 #endif/*__FRAMAC__*/
 err_init:
+    return errcode;
+err_fragment:
+    set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_DATA_IN);
     return errcode;
 }
 
