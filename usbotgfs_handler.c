@@ -329,7 +329,7 @@ static mbed_error_t oepint_handler(void)
                      * RxFIFO is set by the upper layer */
                     set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_SNAK_Msk);
                     /* XXX: defragmentation need to be checked for others (not EP0) EPs */
-                    if (ctx->out_eps[ep_id].type == USBOTG_FS_EP_TYPE_CONTROL && ctx->out_eps[ep_id].fifo_idx < ctx->out_eps[ep_id].fifo_size) {
+                    if (ctx->out_eps[ep_id].fifo_idx < ctx->out_eps[ep_id].fifo_size) {
                         /* handle defragmentation for DATA OUT packets on EP0 */
                         log_printf("[USBOTG][HS] fragment pkt %d total, %d read\n", ctx->out_eps[ep_id].fifo_size, ctx->out_eps[ep_id].fifo_idx);
                         set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
@@ -460,7 +460,7 @@ static mbed_error_t iepint_handler(void)
                      * the consequence of multiple FIFO flush, depending on the transfer size and
                      * the FIFO size */
                     if (ctx->in_eps[ep_id].state == USBOTG_FS_EP_STATE_DATA_IN) {
-                        if (ctx->out_eps[ep_id].type == USBOTG_FS_EP_TYPE_CONTROL && ctx->in_eps[ep_id].fifo_idx < ctx->in_eps[ep_id].fifo_size) {
+                        if (ctx->in_eps[ep_id].fifo_idx < ctx->in_eps[ep_id].fifo_size) {
 
                             log_printf("[USBOTG][HS] iepint: ep %d: still in fragmented transfer (%d on %d), continue...\n", ep_id, ctx->in_eps[ep_id].fifo_idx, ctx->in_eps[ep_id].fifo_size);
                             /* still in fragmentation transfer. We need to start a new
@@ -485,7 +485,6 @@ static mbed_error_t iepint_handler(void)
                             /* 2. write data to fifo */
                             usbotgfs_write_epx_fifo(ctx->in_eps[ep_id].mpsize, &(ctx->in_eps[ep_id]));
                         } else {
-                            log_printf("[USBOTG][FS] iepint: ep %d: exec upper handler\n", ep_id);
                             /* now EP is idle */
                             ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
                             /* inform libctrl of transfert complete */
@@ -498,7 +497,6 @@ static mbed_error_t iepint_handler(void)
                             ctx->in_eps[ep_id].fifo_size = 0;
                         }
                     } else {
-                        log_printf("[USBOTG][FS] ep %d state is %x\n", ep_id, ctx->in_eps[ep_id].state);
                         /* the EP is only set as IDLE to inform the send process
                          * that the FIFO content is effectively sent */
                         /* clear current FIFO, now that content is sent */

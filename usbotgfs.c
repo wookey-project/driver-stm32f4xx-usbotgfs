@@ -391,7 +391,7 @@ uint16_t usbotgfs_get_ep_mpsize(void)
 
     @ behavior bad_ep:
     @   assumes &usbotgfs_ctx != \null ;
-    @   assumes (ep_id >= USBOTGFS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
+    @   assumes (ep_id >= USBOTGHS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
     @   assigns \nothing ;
     @   ensures \result == MBED_ERROR_INVPARAM ;
 
@@ -412,7 +412,7 @@ uint16_t usbotgfs_get_ep_mpsize(void)
 */
 
 /*
-TODO : add specification for !CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+TODO : add specification for !CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
 */
 
 mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
@@ -437,7 +437,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
     }
     ep = &ctx->in_eps[ep_id];
 #else
-    if(ep_id >= USBOTGFS_MAX_OUT_EP)
+    if(ep_id >= USBOTGHS_MAX_OUT_EP)
     {
         errcode = MBED_ERROR_INVPARAM;
         goto err_init
@@ -591,7 +591,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
         }
 #endif
 
-#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
         ep->state = USBOTG_FS_EP_STATE_DATA_IN;
 #else
         ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
@@ -649,7 +649,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 
         if (residual_size == fifo_size) {
             /* last block, no more WIP */
-#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
             ep->state = USBOTG_FS_EP_STATE_DATA_IN;
 
 #else
@@ -692,7 +692,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 #endif
         }
 
-#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
         ep->state = USBOTG_FS_EP_STATE_DATA_IN;
 #else
         ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
@@ -708,7 +708,6 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
     }
 
     if(get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)) {
-        log_printf("[USBOTG][FS] Suspended!\n");
         errcode = MBED_ERROR_BUSY;
         goto err;
     }
