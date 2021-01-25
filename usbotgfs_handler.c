@@ -331,15 +331,15 @@ static mbed_error_t oepint_handler(void)
                     /* XXX: defragmentation need to be checked for others (not EP0) EPs */
                     if (ctx->out_eps[ep_id].type == USBOTG_FS_EP_TYPE_CONTROL && ctx->out_eps[ep_id].fifo_idx < ctx->out_eps[ep_id].fifo_size) {
                         /* handle defragmentation for DATA OUT packets on EP0 */
-                        log_printf("[USBOTG][FS] fragment pkt %d total, %d read\n", ctx->out_eps[ep_id].fifo_size, ctx->out_eps[ep_id].fifo_idx);
+                        log_printf("[USBOTG][HS] fragment pkt %d total, %d read\n", ctx->out_eps[ep_id].fifo_size, ctx->out_eps[ep_id].fifo_idx);
                         set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
                     } else {
-                        log_printf("[USBOTG][FS] oepint for %d data size read\n", ctx->out_eps[ep_id].fifo_idx);
+                        log_printf("[USBOTG][HS] oepint for %d data size read\n", ctx->out_eps[ep_id].fifo_idx);
                         callback_to_call = true;
                     }
                 }
                 if (callback_to_call == true) {
-                    log_printf("[USBOTG][FS] oepint: calling callback\n");
+                    log_printf("[USBOTG][HS] oepint: calling callback\n");
                     if (handler_sanity_check_with_panic((physaddr_t)ctx->out_eps[ep_id].handler)) {
                         goto err;
                     }
@@ -349,7 +349,6 @@ static mbed_error_t oepint_handler(void)
                         /* We synchronously handle CNAK only for EP0 data. others EP are handled by dedicated upper layer
                          * class level handlers */
                         log_printf("[USBOTG][HS] oepint: set CNAK (end of transfer)\n");
-                        /* should be done asynchronously by upper layer when finished! */
                         set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
                     }
                 }
