@@ -31,7 +31,7 @@
 #include "usbotgfs_regs.h"
 #include "usbotgfs.h"
 
-#include "generated/usb_otg_fs.h"
+#include "generated/usb_otg_hs.h"
 #include "usbotgfs_fifos.h"
 #include "usbotgfs_handler.h"
 

@@ -27,7 +27,7 @@
 #include "libc/stdio.h"
 #include "libc/nostd.h"
 #include "libc/string.h"
-#include "generated/usb_otg_fs.h"
+#include "generated/usb_otg_hs.h"
 
 #include "api/libusbotgfs.h"
 #include "usbotgfs.h"
@@ -131,8 +131,8 @@ mbed_error_t usbotgfs_declare(void)
     memcpy((void*)usbotgfs_ctx.dev.name, devname, strlen(devname));
 #endif/*!__FRAMAC__*/
 
-    usbotgfs_ctx.dev.address = usb_otg_fs_dev_infos.address;
-    usbotgfs_ctx.dev.size = usb_otg_fs_dev_infos.size;
+    usbotgfs_ctx.dev.address = USB_OTG_FS_BASE;
+    usbotgfs_ctx.dev.size = 0x4000;
     usbotgfs_ctx.dev.irq_num = 1;
     /* device is mapped voluntary and will be activated after the full
      * authentication sequence
@@ -492,9 +492,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
      * and the corresponding packet count. */
     /* EP 0 is not able to handle more than one packet of mpsize size per transfer. For bigger
      * transfers, the driver must fragment data transfer transparently */
-#if 0
     if (ep_id > 0 || size < ep->mpsize) {
-#endif
         set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPTSIZ(ep_id),
                 packet_count,
                 USBOTG_FS_DIEPTSIZ_PKTCNT_Msk(ep_id),
@@ -504,7 +502,6 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
                 size,
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Msk(ep_id),
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Pos(ep_id));
-#if 0
     } else {
         log_printf("[USBOTG][FS] need to write more data than the EP is able in a single transfer\n");
         set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPTSIZ(ep_id),
@@ -516,7 +513,6 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Msk(ep_id),
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Pos(ep_id));
     }
-#endif
     ep->state = USBOTG_FS_EP_STATE_DATA_IN_WIP;
 
     /* 2. Enable endpoint for transmission. */
@@ -556,7 +552,6 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
      * contents will be transmitted by iepint by detecting that
      * ep->fifo_idx is smaller than ep->fifo_size (data transmission
      * not finished) */
-#if 0
     if (ep_id == 0 && size > ep->mpsize) {
        log_printf("[USBOTG][FS] fragment: initiate the first fragment to send (MPSize) on EP0\n");
 
@@ -600,7 +595,6 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
         usbotgfs_write_epx_fifo(ep->mpsize, ep);
         goto err;
     }
-#endif
 
     /*
      * Case of packets WITHOUT fragmentation
