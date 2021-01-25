@@ -518,11 +518,6 @@ err:
 
 */
 
-/* epid check done by calling function, usbotghs_send_data
-    TODO : add !CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE behavior and CONFIG_USR_DEV_USBOTGHS_DMA behavior
-    FIXME : assigns \nothing for behavior fifo_not_null : not validated by WP
-*/
-
 mbed_error_t usbotgfs_set_xmit_fifo(uint8_t *src, uint32_t size, uint8_t epid)
 {
     usbotgfs_context_t *ctx = usbotgfs_get_context();

@@ -26,6 +26,7 @@
 #include "libc/syscall.h"
 #include "libc/stdio.h"
 #include "libc/nostd.h"
+#include "libc/sync.h"
 #include "libc/string.h"
 #include "generated/usb_otg_hs.h"
 
@@ -58,30 +59,6 @@
 #define USBOTG_FS_TX_FIFO_SZ	512
 
 #define USBOTG_FS_DEBUG 0
-
-/******************************************************************
- * Utilities
- */
-/* wait while the iepint (or oepint in host mode) clear the DATA_OUT state */
-static void usbotgfs_wait_for_xmit_complete(usbotgfs_ep_t *ep)
-{
-#if CONFIG_USR_DEV_USBOTGFS_TRIGER_XMIT_ON_HALF
-    /* wait for iepint interrupt & DIEPINTx TXFE flag set, specifying that
-     * the TxFIFO is half empty
-     */
-    do {
-        ;
-    } while (ep->state != USBOTG_FS_EP_STATE_IDLE);
-#else
-    /* wait for iepint interrupt & DIEPINTx TXFC flag set, specifying that
-     * the TxFIFO is half empty
-     */
-    do {
-        ;
-    } while (ep->state != USBOTG_FS_EP_STATE_IDLE);
-#endif
-    return;
-}
 
 /******************************************************************
  * Defining functional API
@@ -131,8 +108,8 @@ mbed_error_t usbotgfs_declare(void)
     memcpy((void*)usbotgfs_ctx.dev.name, devname, strlen(devname));
 #endif/*!__FRAMAC__*/
 
-    usbotgfs_ctx.dev.address = USB_OTG_FS_BASE;
-    usbotgfs_ctx.dev.size = 0x4000;
+    usbotgfs_ctx.dev.address = usb_otg_fs_dev_infos.address;
+    usbotgfs_ctx.dev.size = usb_otg_fs_dev_infos.size;
     usbotgfs_ctx.dev.irq_num = 1;
     /* device is mapped voluntary and will be activated after the full
      * authentication sequence
@@ -355,6 +332,8 @@ reset ? */
 
     usbotgfs_ctx.speed = USBOTG_FS_SPEED_FS; /* default. In device mode, wait for enumeration */
 
+    request_data_membarrier();
+
 err:
     return errcode;
 }
@@ -391,7 +370,7 @@ uint16_t usbotgfs_get_ep_mpsize(void)
 
     @ behavior bad_ep:
     @   assumes &usbotgfs_ctx != \null ;
-    @   assumes (ep_id >= USBOTGHS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
+    @   assumes (ep_id >= USBOTGFS_MAX_IN_EP || ep_id >= MAX_EP_HW) ;
     @   assigns \nothing ;
     @   ensures \result == MBED_ERROR_INVPARAM ;
 
@@ -412,7 +391,7 @@ uint16_t usbotgfs_get_ep_mpsize(void)
 */
 
 /*
-TODO : add specification for !CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
+TODO : add specification for !CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
 */
 
 mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
@@ -437,12 +416,7 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
     }
     ep = &ctx->in_eps[ep_id];
 #else
-    if(ep_id >= USBOTGHS_MAX_OUT_EP)
-    {
-        errcode = MBED_ERROR_INVPARAM;
-        goto err_init
-    }
-    ep = &ctx->out_eps[ep_id];
+# error "not yet implemented!"
 #endif
 
     if (!ep->configured || !ep->mpsize) {
@@ -513,38 +487,14 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Msk(ep_id),
                 USBOTG_FS_DIEPTSIZ_XFRSIZ_Pos(ep_id));
     }
-    ep->state = USBOTG_FS_EP_STATE_DATA_IN_WIP;
+    set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_DATA_IN_WIP);
 
     /* 2. Enable endpoint for transmission. */
     set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id),
             USBOTG_FS_DIEPCTL_CNAK_Msk | USBOTG_FS_DIEPCTL_EPENA_Msk);
 
 #else
-    /* EP 0 is not able to handle more than one packet of mpsize size per transfer. For bigger
-     * transfers, the driver must fragment data transfer transparently */
-    if (ep_id > 0 || size <= ep->mpsize) {
-    /* 1. Program the OTG_FS_DOEPTSIZx register for the transfer size
-     * and the corresponding packet count. */
-    set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPTSIZ(ep_id),
-            packet_count,
-            USBOTG_FS_DOEPTSIZ_PKTCNT_Msk(ep_id),
-            USBOTG_FS_DOEPTSIZ_PKTCNT_Pos(ep_id));
-
-    set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPTSIZ(ep_id),
-            size,
-            USBOTG_FS_DOEPTSIZ_XFRSIZ_Msk(ep_id),
-            USBOTG_FS_DOEPTSIZ_XFRSIZ_Pos(ep_id));
-    } else {
-        set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPTSIZ(ep_id),
-                1,
-                USBOTG_FS_DOEPTSIZ_PKTCNT_Msk(epid),
-                USBOTG_FS_DOEPTSIZ_PKTCNT_Pos(epid));
-        set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPTSIZ(ep_id),
-                ep->mpsize,
-                USBOTG_FS_DOEPTSIZ_XFRSIZ_Msk(epid),
-                USBOTG_FS_DOEPTSIZ_XFRSIZ_Pos(epid));
-    }
-    ep->state = USBOTG_FS_EP_STATE_DATA_OUT_WIP;
+# error "not yet implemented!"
 #endif
     /* Fragmentation on EP0 case: we don't loop on the input FIFO to
      * synchronously transmit the data, we just write the first packet
@@ -586,10 +536,10 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
         }
 #endif
 
-#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
-        ep->state = USBOTG_FS_EP_STATE_DATA_IN;
+#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+        set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_DATA_IN);
 #else
-        ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
+# error "not yet implemented!"
 #endif
         /* write data from SRC to FIFO */
         usbotgfs_write_epx_fifo(ep->mpsize, ep);
@@ -608,8 +558,8 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
      */
 
     /*@
-      @ loop invariant \valid_read(r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id));
-      @ loop invariant \separated(&usbotghs_ctx,r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id),r_CORTEX_M_USBOTG_HS_GINTMSK, USBOTG_HS_DEVICE_FIFO(usbotghs_ctx.in_eps[ep_id].id) )  ;
+      @ loop invariant \valid_read(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id));
+      @ loop invariant \separated(&usbotghs_ctx,r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id),r_CORTEX_M_USBOTG_FS_GINTMSK, USBOTG_FS_DEVICE_FIFO(usbotghs_ctx.in_eps[ep_id].id) )  ;
       @ loop assigns  residual_size, *ep, *((uint32_t *) (USB_BACKEND_MEMORY_BASE .. USB_BACKEND_MEMORY_END));
       @ loop variant (residual_size - fifo_size);
       */
@@ -631,8 +581,8 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
           */
 
         for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
-            if (get_reg(r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id), USBOTG_HS_DTXFSTS_INEPTFSAV) < (fifo_size / 4)) {
-                if (get_reg(r_CORTEX_M_USBOTG_HS_DSTS, USBOTG_HS_DSTS_SUSPSTS)){
+            if (get_reg(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id), USBOTG_FS_DTXFSTS_INEPTFSAV) < (fifo_size / 4)) {
+                if (get_reg(r_CORTEX_M_USBOTG_FS_DSTS, USBOTG_FS_DSTS_SUSPSTS)){
                     log_printf("[USBOTG][HS] Suspended!\n");
                     errcode = MBED_ERROR_BUSY;
                     goto err;
@@ -643,11 +593,10 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 
         if (residual_size == fifo_size) {
             /* last block, no more WIP */
-#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
-            ep->state = USBOTG_FS_EP_STATE_DATA_IN;
-
+#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+            set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_DATA_IN);
 #else
-            ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
+# error "not yet implemented!"
 #endif
         }
 
@@ -686,17 +635,14 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
 #endif
         }
 
-#if CONFIG_USR_DRV_USBOTGHS_MODE_DEVICE
-        ep->state = USBOTG_FS_EP_STATE_DATA_IN;
+#if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
+        set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_DATA_IN);
 #else
-        ep->state = USBOTG_FS_EP_STATE_DATA_OUT;
+# error "not yet implemented!"
 #endif
         log_printf("[USBOTGFS] write %d len data on ep %d core fifo\n", residual_size, ep->id);
         /* set the EP state to DATA OUT WIP (not yet transmitted) */
         usbotgfs_write_epx_fifo(residual_size, ep);
-        /* wait for XMIT data to be transfered (wait for iepint (or oepint in
-         * host mode) to set the EP in correct state */
-        //usbotgfs_wait_for_xmit_complete(ep);
 
         residual_size = 0;
     }
@@ -708,9 +654,9 @@ mbed_error_t usbotgfs_send_data(uint8_t *src, uint32_t size, uint8_t ep_id)
     return errcode;
 err:
 #if defined(__FRAMAC__)
-    usbotghs_ctx.in_eps[ep_id].state = USBOTG_HS_EP_STATE_IDLE ;
+    set_u8_with_membarrier(&usbotghs_ctx.in_eps[ep_id].state, USBOTG_FS_EP_STATE_IDLE);
 #else
-    ep->state = USBOTG_FS_EP_STATE_IDLE;
+    set_u8_with_membarrier(&ep->state, USBOTG_FS_EP_STATE_IDLE);
 #endif/*__FRAMAC__*/
 err_init:
     return errcode;
@@ -752,11 +698,7 @@ mbed_error_t usbotgfs_send_zlp(uint8_t ep_id)
     }
     ep = &ctx->in_eps[ep_id];
 #else
-    if (ep_id >= USBOTGFS_MAX_OUT_EP) {
-        errcode = MBED_ERROR_INVPARAM;
-        goto err;
-    }
-    ep = &ctx->out_eps[ep_id];
+# error "not yet implemented!"
 #endif
     if (!ep->configured) {
         errcode = MBED_ERROR_INVSTATE;
@@ -767,7 +709,7 @@ mbed_error_t usbotgfs_send_zlp(uint8_t ep_id)
      * Be sure that previous transmission is finished before configuring another one
      */
     /*@
-      @ loop invariant \valid(r_CORTEX_M_USBOTG_HS_DTXFSTS(ep_id));
+      @ loop invariant \valid(r_CORTEX_M_USBOTG_FS_DTXFSTS(ep_id));
       @ loop invariant 0<=cpt<= CPT_HARD ;
       @ loop assigns \nothing ;
       @ loop variant CPT_HARD - cpt ;
@@ -941,7 +883,7 @@ err:
 
   @ behavior dir_in_out_MBED_ERROR_INVSTATE:
   @   assumes &usbotgfs_ctx != \null ;
-  @   assumes (dir == USBOTG_HS_EP_DIR_IN && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \true &&
+  @   assumes (dir == USBOTG_FS_EP_DIR_IN && ep_id < USBOTGFS_MAX_IN_EP && usbotgfs_ctx.in_eps[ep_id].configured == \true &&
   ep_id != 0 && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \false) ||
   ( dir == USBOTG_FS_EP_DIR_OUT && ep_id < USBOTGFS_MAX_OUT_EP && usbotgfs_ctx.out_eps[ep_id].configured == \false ) ;
   @   ensures \result == MBED_ERROR_INVSTATE ;
@@ -1208,6 +1150,7 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
             ctx->in_eps[ep].type = type;
             ctx->in_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
             ctx->in_eps[ep].handler = handler;
+            request_data_membarrier();
 
             /* set EP configuration */
             set_reg_value(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep), type,
@@ -1250,6 +1193,7 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
             if (ep <= USBOTGFS_MAX_IN_EP) {
                 ctx->in_eps[ep].configured = false;
             }
+            request_data_membarrier();
 
             /* Maximum packet size */
             set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep),
@@ -1296,6 +1240,8 @@ mbed_error_t usbotgfs_configure_endpoint(uint8_t                 ep,
             ctx->in_eps[ep].type = type;
             ctx->in_eps[ep].state = USBOTG_FS_EP_STATE_IDLE;
             ctx->in_eps[ep].handler = handler;
+
+            request_data_membarrier();
 
             /* Maximum packet size */
             set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep),
@@ -1536,11 +1482,11 @@ void usbotgfs_set_address(uint16_t addr)
 
   @ behavior DIR_IN_EPNUM_BIG:
   @   assumes (dir == USBOTG_FS_EP_DIR_IN && epnum >= USBOTGFS_MAX_IN_EP);
-  @   ensures \result == USBOTG_HS_EP_STATE_INVALID ;
+  @   ensures \result == USBOTG_FS_EP_STATE_INVALID ;
 
   @ behavior DIR_OUT_EPNUM_BIG:
   @   assumes (dir == USBOTG_FS_EP_DIR_OUT && epnum >= USBOTGFS_MAX_OUT_EP);
-  @   ensures \result == USBOTG_HS_EP_STATE_INVALID ;
+  @   ensures \result == USBOTG_FS_EP_STATE_INVALID ;
 
   @ behavior DIR_IN:
   @   assumes dir == USBOTG_FS_EP_DIR_IN ;
@@ -1585,10 +1531,11 @@ usbotgfs_ep_state_t usbotgfs_get_ep_state(uint8_t epnum, usbotgfs_ep_dir_t dir)
 
 /*@
   @ assigns \nothing ;
-  @ ensures \result == USBOTG_HS_PORT_FULLSPEED ;
+  @ ensures \result == USBOTG_FS_PORT_FULLSPEED ;
   */
 usbotgfs_port_speed_t usbotgfs_get_speed(void)
 {
+
     return USBOTG_FS_PORT_FULLSPEED;
 }
 

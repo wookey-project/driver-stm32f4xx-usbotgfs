@@ -210,11 +210,7 @@ static mbed_error_t reset_handler(void)
             goto err;
         }
 #else
-        /* set TxFIFO for EP0 (out_eps[0]) */
-        log_printf("[USB FS][RESET] initialize EP0 TxFIFO in host mode\n");
-        if ((errcode = usbotgfs_reset_epx_fifo(&(ctx->out_eps[0]))) != MBED_ERROR_NONE) {
-            goto err;
-        }
+# error "not yet implemented!"
 #endif
     /* flushing FIFOs */
     usbotgfs_txfifo_flush(0);
@@ -237,7 +233,7 @@ static mbed_error_t reset_handler(void)
         set_reg(r_CORTEX_M_USBOTG_FS_DOEPCTL(0),
                 1, USBOTG_FS_DOEPCTL_EPENA);
 #else
-        log_printf("[USB FS][RESET] host mode TODO\n");
+# error "not yet implemented!"
 #endif
 err:
     return errcode;
@@ -362,22 +358,7 @@ static mbed_error_t oepint_handler(void)
         set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_OEPINT);
 err:
 #else
-        /* TODO: (FIXME host mode not working yet) here, this is a 'end of transmission' interrupt. Let's handle each
-         * endpoint for which the interrupt rised */
-        uint16_t val = 0x1;
-        uint8_t ep_id = 0;
-        for (uint8_t i = 0; i < 16; ++i) {
-            if (daint & val) {
-                /* an iepint for this EP is active */
-                log_printf("[USBOTG][HS] iepint: ep %d\n", ep_id);
-                /* now that transmit is complete, set ep state as IDLE */
-                /* calling upper handler, transmitted size read from DOEPSTS */
-                errcode = usbctrl_handle_outepevent(usb_otg_fs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
-                ctx->out_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
-            }
-            ep_id++;
-            val = val << 1;
-        }
+# error "not yet implemented!"
 #endif
     return errcode;
 }
@@ -523,20 +504,7 @@ static mbed_error_t iepint_handler(void)
         set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_IEPINT);
 err:
 #else
-        /* here, this is a 'data received' interrupt  (Host mode) */
-        uint16_t val = 0x1;
-        uint8_t ep_id = 0;
-        for (uint8_t i = 0; i < 16; ++i) {
-            if (daint & val) {
-                /* an iepint for this EP is active */
-                log_printf("[USBOTG][HS] iepint: ep %d\n", ep_id);
-                /* calling upper handler */
-                errcode = usbctrl_handle_outepevent(usb_otg_fs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
-                ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
-            }
-            ep_id++;
-            val = val << 1;
-        }
+# error "not yet implemented!"
 #endif
     /* calling upper handler... needed ? */
     return errcode;
@@ -555,7 +523,7 @@ static mbed_error_t rxflvl_handler(void)
 #if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
 	uint8_t epnum = 0; /* device case */
 #else
-	uint8_t chnum = 0; /* host case */
+# error "not yet implemented!"
 #endif
 	uint32_t size;
     usbotgfs_context_t *ctx;
@@ -577,8 +545,7 @@ static mbed_error_t rxflvl_handler(void)
             pktsts.devsts = USBOTG_FS_GRXSTSP_GET_STATUS(grxstsp);
             epnum = USBOTG_FS_GRXSTSP_GET_EPNUM(grxstsp);
 #else
-            pktsts.hoststs = USBOTG_FS_GRXSTSP_GET_STATUS(grxstsp);
-            chnum = USBOTG_FS_GRXSTSP_GET_CHNUM(grxstsp);
+# error "not yet implemented!"
 #endif
 	dpid = USBOTG_FS_GRXSTSP_GET_DPID(grxstsp);
 	bcnt =  USBOTG_FS_GRXSTSP_GET_BCNT(grxstsp);
@@ -588,7 +555,7 @@ static mbed_error_t rxflvl_handler(void)
 # if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
         log_printf("EP:%d, PKTSTS:%x, BYTES_COUNT:%x,  DATA_PID:%x\n", epnum, pktsts.devsts, bcnt, dpid);
 # else
-        log_printf("CH:%d, PKTSTS:%x, BYTES_COUNT:%x,  DATA_PID:%x\n", chnum, pktsts.hoststs, bcnt, dpid);
+# error "not yet implemented!"
 # endif
 #endif
     /* 3. If the received packet’s byte count is not 0, the byte count amount of data
@@ -722,7 +689,7 @@ static mbed_error_t rxflvl_handler(void)
         }
 
 #else
-        /* TODO: handle Host mode RXFLVL behavior */
+# error "not yet implemented!"
 #endif
 err:
 	set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_RXFLVLM);

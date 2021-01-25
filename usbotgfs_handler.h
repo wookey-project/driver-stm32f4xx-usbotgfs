@@ -21,8 +21,8 @@
  * Franklin St, Fifth Floor, Boston, MA 02110-1301 USA
  *
  */
-#ifndef USBOTGHS_HANDLER_H_
-#define USBOTGHS_HANDLER_H_
+#ifndef USBOTGFS_HANDLER_H_
+#define USBOTGFS_HANDLER_H_
 
 #include "libc/types.h"
 
@@ -73,4 +73,4 @@ void USBOTGFS_IRQHandler(uint8_t interrupt,
                          uint32_t sr,
                          uint32_t dr);
 
-#endif/*!USBOTGHS_HANDLER_H_*/
+#endif/*!USBOTGFS_HANDLER_H_*/
