@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef USBOTGHS_H_
-# define USBOTGHS_H_
+#ifndef USBOTGFS_H_
+# define USBOTGFS_H_
 
 #include "autoconf.h"
 
@@ -105,4 +105,4 @@ typedef struct {
 
 usbotgfs_context_t *usbotgfs_get_context(void);
 
-#endif /*!USBOTGHS_H_ */
+#endif /*!USBOTGFS_H_ */

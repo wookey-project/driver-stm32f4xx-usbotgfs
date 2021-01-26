@@ -22,8 +22,8 @@
  *
  */
 
-#ifndef USBOTGHS_FIFOS_H_
-#define USBOTGHS_FIFOS_H_
+#ifndef USBOTGFS_FIFOS_H_
+#define USBOTGFS_FIFOS_H_
 
 #include "libc/types.h"
 
@@ -67,4 +67,4 @@ mbed_error_t usbotgfs_txfifo_flush_all(void);
 
 mbed_error_t usbotgfs_rxfifo_flush(uint8_t ep_id);
 
-#endif/*!USBOTGHS_FIFOS_H_*/
+#endif/*!USBOTGFS_FIFOS_H_*/

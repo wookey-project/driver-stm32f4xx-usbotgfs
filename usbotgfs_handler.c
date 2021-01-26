@@ -211,11 +211,7 @@ static mbed_error_t reset_handler(void)
             goto err;
         }
 #else
-        /* set TxFIFO for EP0 (out_eps[0]) */
-        log_printf("[USB FS][RESET] initialize EP0 TxFIFO in host mode\n");
-        if ((errcode = usbotgfs_reset_epx_fifo(&(ctx->out_eps[0]))) != MBED_ERROR_NONE) {
-            goto err;
-        }
+# error "not yet implemented!"
 #endif
     /* flushing FIFOs */
     usbotgfs_txfifo_flush(0);
@@ -238,7 +234,7 @@ static mbed_error_t reset_handler(void)
         set_reg(r_CORTEX_M_USBOTG_FS_DOEPCTL(0),
                 1, USBOTG_FS_DOEPCTL_EPENA);
 #else
-        log_printf("[USB FS][RESET] host mode TODO\n");
+# error "not yet implemented!"
 #endif
 err:
     return errcode;
@@ -311,7 +307,7 @@ static mbed_error_t oepint_handler(void)
                 uint32_t doepint = read_reg_value(r_CORTEX_M_USBOTG_FS_DOEPINT(ep_id));
                 bool callback_to_call = false;
                 bool end_of_transfer = false;
-                if (ep_id == 0 && (doepint & USBOTG_FS_DOEPINT_STUP_Msk)) {
+                if (doepint & USBOTG_FS_DOEPINT_STUP_Msk) {
                     log_printf("[USBOTG][HS] oepint: entering STUP\n");
                     set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPINT(ep_id), USBOTG_FS_DOEPINT_STUP_Msk);
                     callback_to_call = true;
@@ -330,23 +326,23 @@ static mbed_error_t oepint_handler(void)
                      * RxFIFO is set by the upper layer */
                     set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_SNAK_Msk);
                     /* XXX: defragmentation need to be checked for others (not EP0) EPs */
-#if 0
-                    if (ep_id == 0 && ctx->out_eps[ep_id].fifo_idx < ctx->out_eps[ep_id].fifo_size) {
-                        log_printf("[USBOTG][FS] fragment pkt %d total, %d read\n", ctx->out_eps[ep_id].fifo_size, ctx->out_eps[ep_id].fifo_idx);
-                        set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
-                    }
-#endif
-                    if (ctx->out_eps[ep_id].state == USBOTG_FS_EP_STATE_DATA_OUT) {
-                        log_printf("[USBOTG][FS] oepint for %d data size read\n", ctx->out_eps[ep_id].fifo_idx);
-                        callback_to_call = true;
+                    if (ctx->out_eps[ep_id].fifo_idx < ctx->out_eps[ep_id].fifo_size) {
+                        if (ctx->out_eps[ep_id].state == USBOTG_FS_EP_STATE_DATA_OUT) {
+                            callback_to_call = true;
+                        } else {
+                            /* handle defragmentation for DATA OUT packets on EP0 */
+                            log_printf("[USBOTG][HS] fragment pkt %d total, %d read\n", ctx->out_eps[ep_id].fifo_size, ctx->out_eps[ep_id].fifo_idx);
+                            set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
+                        }
                     } else {
-                        /* handle defragmentation for DATA OUT packets on EP0 */
-                        log_printf("[USBOTG][FS] fragment pkt %d total, %d read\n", ctx->out_eps[ep_id].fifo_size, ctx->out_eps[ep_id].fifo_idx);
-                        set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
+                        /* FIFO Full */
+                        log_printf("[USBOTG][HS] oepint for %d data size read\n", ctx->out_eps[ep_id].fifo_idx);
+                        set_u8_with_membarrier(&ctx->out_eps[ep_id].state, USBOTG_FS_EP_STATE_DATA_OUT);
+                        callback_to_call = true;
                     }
                 }
                 if (callback_to_call == true) {
-                    log_printf("[USBOTG][FS] oepint: calling callback\n");
+                    log_printf("[USBOTG][HS] oepint: calling callback\n");
                     if (handler_sanity_check_with_panic((physaddr_t)ctx->out_eps[ep_id].handler)) {
                         goto err;
                     }
@@ -356,14 +352,12 @@ static mbed_error_t oepint_handler(void)
                         /* We synchronously handle CNAK only for EP0 data. others EP are handled by dedicated upper layer
                          * class level handlers */
                         log_printf("[USBOTG][HS] oepint: set CNAK (end of transfer)\n");
-                        /* should be done asynchronously by upper layer when finished! */
                         set_reg_bits(r_CORTEX_M_USBOTG_FS_DOEPCTL(ep_id), USBOTG_FS_DOEPCTL_CNAK_Msk);
                     }
-                    /* now that data has been handled, consider FIFO as empty */
-                    set_u8_with_membarrier(&ctx->out_eps[ep_id].state, USBOTG_FS_EP_STATE_IDLE);
                 }
-
                 /* XXX: only if SNAK set */
+                /* now that data has been handled, consider FIFO as empty */
+                set_u8_with_membarrier(&ctx->out_eps[ep_id].state, USBOTG_FS_EP_STATE_IDLE);
             }
             ep_id++;
             daint >>= 1;
@@ -371,22 +365,7 @@ static mbed_error_t oepint_handler(void)
         set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_OEPINT);
 err:
 #else
-        /* TODO: (FIXME host mode not working yet) here, this is a 'end of transmission' interrupt. Let's handle each
-         * endpoint for which the interrupt rised */
-        uint16_t val = 0x1;
-        uint8_t ep_id = 0;
-        for (uint8_t i = 0; i < 16; ++i) {
-            if (daint & val) {
-                /* an iepint for this EP is active */
-                log_printf("[USBOTG][HS] iepint: ep %d\n", ep_id);
-                /* now that transmit is complete, set ep state as IDLE */
-                /* calling upper handler, transmitted size read from DOEPSTS */
-                errcode = usbctrl_handle_outepevent(usb_otg_fs_dev_infos.id, ctx->out_eps[ep_id].fifo_idx, ep_id);
-                ctx->out_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
-            }
-            ep_id++;
-            val = val << 1;
-        }
+# error "not yet implemented!"
 #endif
     return errcode;
 }
@@ -469,7 +448,7 @@ static mbed_error_t iepint_handler(void)
                      * the consequence of multiple FIFO flush, depending on the transfer size and
                      * the FIFO size */
                     if (ctx->in_eps[ep_id].state == USBOTG_FS_EP_STATE_DATA_IN) {
-                        if (ctx->out_eps[ep_id].type == USBOTG_FS_EP_TYPE_CONTROL && ctx->in_eps[ep_id].fifo_idx < ctx->in_eps[ep_id].fifo_size) {
+                        if (ctx->in_eps[ep_id].fifo_idx < ctx->in_eps[ep_id].fifo_size) {
 
                             log_printf("[USBOTG][HS] iepint: ep %d: still in fragmented transfer (%d on %d), continue...\n", ep_id, ctx->in_eps[ep_id].fifo_idx, ctx->in_eps[ep_id].fifo_size);
                             /* still in fragmentation transfer. We need to start a new
@@ -492,9 +471,8 @@ static mbed_error_t iepint_handler(void)
                             set_reg_bits(r_CORTEX_M_USBOTG_FS_DIEPCTL(ep_id),
                                     USBOTG_FS_DIEPCTL_CNAK_Msk | USBOTG_FS_DIEPCTL_EPENA_Msk);
                             /* 2. write data to fifo */
-                            usbotgfs_write_epx_fifo(ctx->in_eps[ep_id].mpsize, &(ctx->in_eps[ep_id]));
+                            usbotgfs_write_epx_fifo(datasize, &(ctx->in_eps[ep_id]));
                         } else {
-                            log_printf("[USBOTG][FS] iepint: ep %d: exec upper handler\n", ep_id);
                             /* now EP is idle */
                             ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
                             /* inform libctrl of transfert complete */
@@ -507,7 +485,6 @@ static mbed_error_t iepint_handler(void)
                             ctx->in_eps[ep_id].fifo_size = 0;
                         }
                     } else {
-                        log_printf("[USBOTG][FS] ep %d state is %x\n", ep_id, ctx->in_eps[ep_id].state);
                         /* the EP is only set as IDLE to inform the send process
                          * that the FIFO content is effectively sent */
                         /* clear current FIFO, now that content is sent */
@@ -534,20 +511,7 @@ static mbed_error_t iepint_handler(void)
         set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_IEPINT);
 err:
 #else
-        /* here, this is a 'data received' interrupt  (Host mode) */
-        uint16_t val = 0x1;
-        uint8_t ep_id = 0;
-        for (uint8_t i = 0; i < 16; ++i) {
-            if (daint & val) {
-                /* an iepint for this EP is active */
-                log_printf("[USBOTG][HS] iepint: ep %d\n", ep_id);
-                /* calling upper handler */
-                errcode = usbctrl_handle_outepevent(usb_otg_fs_dev_infos.id, ctx->in_eps[ep_id].fifo_idx, ep_id);
-                ctx->in_eps[ep_id].state = USBOTG_FS_EP_STATE_IDLE;
-            }
-            ep_id++;
-            val = val << 1;
-        }
+# error "not yet implemented!"
 #endif
     /* calling upper handler... needed ? */
     return errcode;
@@ -566,7 +530,7 @@ static mbed_error_t rxflvl_handler(void)
 #if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
 	uint8_t epnum = 0; /* device case */
 #else
-	uint8_t chnum = 0; /* host case */
+# error "not yet implemented!"
 #endif
 	uint32_t size;
     usbotgfs_context_t *ctx;
@@ -588,8 +552,7 @@ static mbed_error_t rxflvl_handler(void)
             pktsts.devsts = USBOTG_FS_GRXSTSP_GET_STATUS(grxstsp);
             epnum = USBOTG_FS_GRXSTSP_GET_EPNUM(grxstsp);
 #else
-            pktsts.hoststs = USBOTG_FS_GRXSTSP_GET_STATUS(grxstsp);
-            chnum = USBOTG_FS_GRXSTSP_GET_CHNUM(grxstsp);
+# error "not yet implemented!"
 #endif
 	dpid = USBOTG_FS_GRXSTSP_GET_DPID(grxstsp);
 	bcnt =  USBOTG_FS_GRXSTSP_GET_BCNT(grxstsp);
@@ -599,7 +562,7 @@ static mbed_error_t rxflvl_handler(void)
 # if CONFIG_USR_DRV_USBOTGFS_MODE_DEVICE
         log_printf("EP:%d, PKTSTS:%x, BYTES_COUNT:%x,  DATA_PID:%x\n", epnum, pktsts.devsts, bcnt, dpid);
 # else
-        log_printf("CH:%d, PKTSTS:%x, BYTES_COUNT:%x,  DATA_PID:%x\n", chnum, pktsts.hoststs, bcnt, dpid);
+# error "not yet implemented!"
 # endif
 #endif
     /* 3. If the received packet’s byte count is not 0, the byte count amount of data
@@ -645,8 +608,8 @@ static mbed_error_t rxflvl_handler(void)
                         errcode = MBED_ERROR_INVSTATE;
                         goto err;
                     }
-                    if (bcnt == 0 && ctx->out_eps[epnum].fifo_idx == 0) {
-                        goto err;
+                    if (bcnt == 0) {
+                        goto check_variable_length_transfer;
                     }
                     log_printf("[USB FS][RXFLVL] EP%d OUT Data PKT (size %d) Read EPx FIFO\n", epnum, bcnt);
                     if (usbotgfs_read_epx_fifo(bcnt, &(ctx->out_eps[epnum])) != MBED_ERROR_NONE) {
@@ -655,38 +618,40 @@ static mbed_error_t rxflvl_handler(void)
                         usbotgfs_endpoint_set_nak(epnum, USBOTG_FS_EP_DIR_OUT);
                     }
                     set_u8_with_membarrier(&ctx->out_eps[epnum].state, USBOTG_FS_EP_STATE_DATA_OUT_WIP);
-#if 0
                     if (epnum == 0) {
-#endif
                         if (ctx->out_eps[epnum].fifo_idx < ctx->out_eps[epnum].fifo_size) {
                             /* rise oepint to permit refragmentation at oepint layer */
                             set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPTSIZ(epnum), 1, USBOTG_FS_DOEPTSIZ_PKTCNT_Msk(epnum), USBOTG_FS_DOEPTSIZ_PKTCNT_Pos(epnum));
                             set_reg_value(r_CORTEX_M_USBOTG_FS_DOEPTSIZ(epnum), ctx->out_eps[epnum].mpsize, USBOTG_FS_DOEPTSIZ_XFRSIZ_Msk(epnum), USBOTG_FS_DOEPTSIZ_XFRSIZ_Pos(epnum));
-#if 0
                         }
-#endif
                     }
-                    /* handling variable length transfert. When receiving ZLP after mpsize multiple data OR
+                    check_variable_length_transfer:
+                    /* handling variable length transfert (for BULK only, see chap. 5.8.3)
+                     * When receiving ZLP after mpsize multiple data OR
                      * receiving data smaller than MPSize, this means that this is the last DATA packet (see
-                     * Data variable length transaction, USB 2.0 std protocol) */
-                    if (bcnt < ctx->out_eps[epnum].mpsize ||
+                     * Data variable length transaction, USB 2.0 std protocol).
+                     * We consider variable length data transfer not supported on EP0 */
+                    if ((bcnt < ctx->out_eps[epnum].mpsize) ||
                             (bcnt == 0 && ctx->out_eps[epnum].fifo_idx >= ctx->out_eps[epnum].mpsize))
                     {
-                        set_u8_with_membarrier(&ctx->out_eps[epnum].state, USBOTG_FS_EP_STATE_DATA_OUT);
+                        /* only for BULK endpoints, says the USB standard */
+                        if (ctx->out_eps[epnum].type != USBOTG_FS_EP_TYPE_ISOCHRONOUS) {
+                            set_u8_with_membarrier(&ctx->out_eps[epnum].state, USBOTG_FS_EP_STATE_DATA_OUT);
+                            //@ ghost GHOST_out_eps[epnum].state = usbotghs_ctx.out_eps[epnum].state;
+                        }
                     }
-
+                    goto err;
                     break;
                 }
             case PKT_STATUS_OUT_TRANSFER_COMPLETE:
                 {
-                    log_printf("[USB FS][RXFLVL] OUT Transfer complete on EP %d (previous size: %d)\n", epnum, ctx->out_eps[epnum].fifo_idx);
+                    log_printf("[USB FS][RXFLVL] OUT Transfer complete on EP %d\n", epnum);
                     if (ctx->out_eps[epnum].configured != true) /* which state on OUT TRSFER Complete ? */
                     {
                         log_printf("[USB FS][RXFLVL] OUT Data PKT on invalid EP!\n");
                         errcode = MBED_ERROR_INVSTATE;
                         goto err;
                     }
-
                     break;
                 }
             case PKT_STATUS_SETUP_TRANS_COMPLETE:
@@ -746,7 +711,7 @@ static mbed_error_t rxflvl_handler(void)
         }
 
 #else
-        /* TODO: handle Host mode RXFLVL behavior */
+# error "not yet implemented!"
 #endif
 err:
 	set_reg(r_CORTEX_M_USBOTG_FS_GINTMSK, 1, USBOTG_FS_GINTMSK_RXFLVLM);
