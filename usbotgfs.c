@@ -28,7 +28,7 @@
 #include "libc/nostd.h"
 #include "libc/sync.h"
 #include "libc/string.h"
-#include "generated/usb_otg_hs.h"
+#include "generated/usb_otg_fs.h"
 
 #include "api/libusbotgfs.h"
 #include "usbotgfs.h"
