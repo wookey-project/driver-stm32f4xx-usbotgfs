@@ -104,7 +104,7 @@ static inline void usbotgfs_write_core_fifo(volatile uint8_t *src, volatile cons
     if (!src || size == 0) {
         return;
     }
-    log_printf("[USBOTG][HS] writing %d bytes to EP %d core TxFIFO\n", size, ep);
+    log_printf("[USBOTG][FS] writing %d bytes to EP %d core TxFIFO\n", size, ep);
     // IP should has its own interrupts disable during ISR execution
     uint32_t oldmask = read_reg_value(r_CORTEX_M_USBOTG_FS_GINTMSK);
     /* mask interrupts while writting Core FIFO */
@@ -318,24 +318,24 @@ mbed_error_t usbotgfs_read_epx_fifo(uint32_t size, usbotgfs_ep_t *ep)
 
     /* sanitation */
     if (ep->configured == false) {
-        log_printf("[USBOTG][HS] EPx %d not configured\n", ep->id);
+        log_printf("[USBOTG][FS] EPx %d not configured\n", ep->id);
         errcode = MBED_ERROR_INVPARAM;
         goto err;
     }
     /* TODO: checking that EP is in correct direction before continuing */
     if (size == 0) {
-        log_printf("[USBOTG][HS] nothing to read on EPx %d\n", ep->id);
+        log_printf("[USBOTG][FS] nothing to read on EPx %d\n", ep->id);
         goto err;
     }
     if (size > (ep->fifo_size - ep->fifo_idx)) {
-        printf("[USBOTG][HS] invalid or too big size in ep %d: %d (fifo: 0x%x, fifo size: %d, idx: %d)\n", ep->id, size, ep->fifo, ep->fifo_size, ep->fifo_idx);
+        printf("[USBOTG][FS] invalid or too big size in ep %d: %d (fifo: 0x%x, fifo size: %d, idx: %d)\n", ep->id, size, ep->fifo, ep->fifo_size, ep->fifo_idx);
         /* Why reading 0 bytes from Core FIFO ? */
         errcode = MBED_ERROR_INVPARAM;
         goto err;
     }
     /* Let's now do the read transaction itself... */
     if (ep->fifo_lck != false) {
-        log_printf("[USBOTG][HS] invalid state! fifo already locked\n");
+        log_printf("[USBOTG][FS] invalid state! fifo already locked\n");
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
@@ -380,7 +380,7 @@ mbed_error_t usbotgfs_write_epx_fifo(const uint32_t size, usbotgfs_ep_t *ep)
     }
     /* Let's now do the read transaction itself... */
     if (ep->fifo_lck != false) {
-        log_printf("[USBOTG][HS] invalid state! fifo already locked\n");
+        log_printf("[USBOTG][FS] invalid state! fifo already locked\n");
         errcode = MBED_ERROR_INVSTATE;
         goto err;
     }
@@ -390,7 +390,7 @@ mbed_error_t usbotgfs_write_epx_fifo(const uint32_t size, usbotgfs_ep_t *ep)
     if (ep->fifo_idx >= ((uint32_t)4*1024*1024*1000 - size)) {
         /* In a nominal embedded usage, this should never arise as embedded devices never
          * handle such amount of memory */
-        log_printf("USBOTG][HS] overflow detected!\n");
+        log_printf("USBOTG][FS] overflow detected!\n");
         errcode = MBED_ERROR_NOMEM;
         goto err;
     }
@@ -536,7 +536,7 @@ mbed_error_t usbotgfs_set_xmit_fifo(uint8_t *src, uint32_t size, uint8_t epid)
         goto err;
     }
 
-    log_printf("[USBOTG][HS] set ep %d TxFIFO to %p (size %d)\n", ep->id, src, size);
+    log_printf("[USBOTG][FS] set ep %d TxFIFO to %p (size %d)\n", ep->id, src, size);
 
     set_bool_with_membarrier(&(ep->fifo_lck), true);
     /* set RAM FIFO for current EP. */
@@ -591,7 +591,7 @@ mbed_error_t usbotgfs_txfifo_flush(uint8_t ep_id)
     for(uint8_t cpt=0; cpt<CPT_HARD; cpt++){
         if (get_reg(r_CORTEX_M_USBOTG_FS_GRSTCTL, USBOTG_FS_GRSTCTL_TXFFLSH)) {
             if (cpt > USBOTGFS_REG_CHECK_TIMEOUT) {
-                log_printf("[USBOTG][HS] HANG! Waiting for the core to clear the TxFIFO Flush bit GRSTCTL:TXFFLSH\n");
+                log_printf("[USBOTG][FS] HANG! Waiting for the core to clear the TxFIFO Flush bit GRSTCTL:TXFFLSH\n");
                 errcode = MBED_ERROR_BUSY;
                 goto err;
             }
@@ -632,7 +632,7 @@ mbed_error_t usbotgfs_rxfifo_flush(uint8_t ep_id)
  	 */
     while (get_reg(r_CORTEX_M_USBOTG_FS_GRSTCTL, USBOTG_FS_GRSTCTL_RXFFLSH)) {
         if (++count > USBOTGFS_REG_CHECK_TIMEOUT) {
-            log_printf("[USBOTG][HS] HANG! Waiting for the core to clear the RxFIFO Flush bit GRSTCTL:RXFFLSH\n");
+            log_printf("[USBOTG][FS] HANG! Waiting for the core to clear the RxFIFO Flush bit GRSTCTL:RXFFLSH\n");
             errcode = MBED_ERROR_BUSY;
             goto err;
         }
@@ -649,7 +649,7 @@ mbed_error_t usbotgfs_rxfifo_flush(uint8_t ep_id)
 	count = 0;
     while (get_reg(r_CORTEX_M_USBOTG_FS_GRSTCTL, USBOTG_FS_GRSTCTL_RXFFLSH)) {
         if (++count > USBOTGFS_REG_CHECK_TIMEOUT) {
-            log_printf("[USBOTG][HS] HANG! Waiting for the core to clear the RxFIFO Flush bit GRSTCTL:RXFFLSH\n");
+            log_printf("[USBOTG][FS] HANG! Waiting for the core to clear the RxFIFO Flush bit GRSTCTL:RXFFLSH\n");
             errcode = MBED_ERROR_BUSY;
             goto err;
         }
