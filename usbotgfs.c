@@ -347,8 +347,9 @@ err:
   @ ensures \result == MAX_EPx_PKT_SIZE ;
   */
 
-uint16_t usbotgfs_get_ep_mpsize(void)
+uint16_t usbotgfs_get_ep_mpsize(usbotgfs_ep_type_t type __attribute__((unused)))
 {
+    /* in FS mode, same MPSize for both Control & Data EP */
     return MAX_EPx_PKT_SIZE;
 }
 
@@ -1587,6 +1588,6 @@ mbed_error_t usb_backend_drv_nak(uint8_t ep_id, usb_backend_drv_ep_dir_t dir)
 mbed_error_t usb_backend_drv_stall(uint8_t ep_id, usb_backend_drv_ep_dir_t dir)
     __attribute__ ((alias("usbotgfs_endpoint_stall")));
 
-uint16_t usb_backend_get_ep_mpsize(void) __attribute__ ((alias("usbotgfs_get_ep_mpsize")));
+uint16_t usb_backend_get_ep_mpsize(usbotgfs_ep_type_t type) __attribute__ ((alias("usbotgfs_get_ep_mpsize")));
 usb_backend_drv_port_speed_t usb_backend_drv_get_speed(void) __attribute__ ((alias("usbotgfs_get_speed")));
 
